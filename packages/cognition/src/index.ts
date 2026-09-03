@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import type { AgentRecord, CapabilityDescription, ExecutionRecord, MemoryRecord, MessageRecord } from '../../shared/src/index.js';
+import type { AgentRecord, CapabilityDescription, ExecutionRecord, MemoryRecord, MessageRecord, ToolSummary } from '../../shared/src/index.js';
 import { AgentActionSchema, type AgentAction } from '../../tools/src/actions.js';
 
-export interface Observation{tick:number;self:AgentRecord;nearbyOrRelevantEvents:{type:string;tick:number;summary:Record<string,unknown>}[];privateArtifacts:string[];sharedArtifacts:string[];receivedMessages:MessageRecord[];recentExecutions:ExecutionRecord[];accessibleResources:{computeCredits:number;storageBytes:number};availableCapabilities:CapabilityDescription[];}
+export interface Observation{tick:number;self:AgentRecord;nearbyOrRelevantEvents:{type:string;tick:number;summary:Record<string,unknown>}[];privateArtifacts:string[];sharedArtifacts:string[];receivedMessages:MessageRecord[];recentExecutions:ExecutionRecord[];accessibleResources:{computeCredits:number;storageBytes:number};kernelCapabilities:CapabilityDescription[];userlandTools:ToolSummary[];availableCapabilities:CapabilityDescription[];}
 export interface CognitionInput{identity:{id:string;name:string;bootstrapInstruction:string};currentObservation:Observation;relevantMemories:MemoryRecord[];availableActions:CapabilityDescription[];currentResources:{computeCredits:number;storageBytes:number};recentMessages:MessageRecord[];}
 export interface CognitionOutput{thoughtSummary:string;selectedAction:AgentAction;reasoningMetadata?:Record<string,unknown>|undefined;}
 export interface CognitionProvider{think(input:CognitionInput):Promise<CognitionOutput>;}

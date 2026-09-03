@@ -1,7 +1,7 @@
 import { describe,expect,it,vi } from 'vitest';
 import { OpenAICompatibleCognitionProvider,type CognitionInput } from '../packages/cognition/src/index.js';
 
-const input={identity:{id:'a',name:'Mam',bootstrapInstruction:'You exist.'},currentObservation:{tick:1,self:{} as never,nearbyOrRelevantEvents:[],privateArtifacts:[],sharedArtifacts:[],receivedMessages:[],recentExecutions:[],accessibleResources:{computeCredits:1,storageBytes:0},availableCapabilities:[]},relevantMemories:[],availableActions:[],currentResources:{computeCredits:1,storageBytes:0},recentMessages:[]} satisfies CognitionInput;
+const input={identity:{id:'a',name:'Mam',bootstrapInstruction:'You exist.'},currentObservation:{tick:1,self:{} as never,nearbyOrRelevantEvents:[],privateArtifacts:[],sharedArtifacts:[],receivedMessages:[],recentExecutions:[],accessibleResources:{computeCredits:1,storageBytes:0},kernelCapabilities:[],userlandTools:[],availableCapabilities:[]},relevantMemories:[],availableActions:[],currentResources:{computeCredits:1,storageBytes:0},recentMessages:[]} satisfies CognitionInput;
 const response=(body:unknown,status=200)=>new Response(typeof body==='string'?body:JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
 const validBody={choices:[{message:{content:JSON.stringify({thoughtSummary:'I will wait.',selectedAction:{type:'WAIT',ticks:2}})}}],usage:{total_tokens:12}};
 

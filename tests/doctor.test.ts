@@ -1,0 +1,13 @@
+import { describe,expect,it } from 'vitest';
+import { SandboxDoctor } from '../packages/operations/src/doctor.js';
+import { RUNTIME_POLICIES,type DockerCommandResult } from '../packages/sandbox/src/docker.js';
+import type { ExecutionRequest,ExecutionSandbox } from '../packages/sandbox/src/filesystem.js';
+
+const commandResult=(overrides:Partial<DockerCommandResult>={}):DockerCommandResult=>({exitCode:0,stdout:'',stderr:'',timedOut:false,...overrides});
+const passingSandbox:ExecutionSandbox={async execute(request:ExecutionRequest){if(request.entrypoint==='forever.js')return{success:false,exitCode:null,stdout:'',stderr:'',timedOut:true,durationMs:500,truncated:false};if(request.entrypoint==='output.js')return{success:false,exitCode:null,stdout:'x'.repeat(1024),stderr:'',timedOut:false,durationMs:1,truncated:true};if(request.entrypoint==='network.js')return{success:true,exitCode:0,stdout:'NETWORK_BLOCKED\n',stderr:'',timedOut:false,durationMs:1,truncated:false};if(request.entrypoint==='isolation.js')return{success:true,exitCode:0,stdout:'ISOLATED\n',stderr:'',timedOut:false,durationMs:1,truncated:false};return{success:true,exitCode:0,stdout:'42\n',stderr:'',timedOut:false,durationMs:1,truncated:false};}};
+
+describe('sandbox operational doctor',()=>{
+  it('reports an unavailable daemon without pretending execution passed',async()=>{const report=await new SandboxDoctor(async()=>commandResult({exitCode:1,stderr:'daemon offline'}),()=>passingSandbox).verify();expect(report.operationallyVerified).toBe(false);expect(report.checks).toContainEqual(expect.objectContaining({name:'Docker daemon',passed:false}));});
+  it('verifies runtime identities and all restricted execution probes',async()=>{const command=async(args:string[])=>args[0]==='version'?commandResult({stdout:'28.0'}):args[0]==='info'?commandResult({stdout:'linux'}):commandResult({stdout:`repo@${args.includes(RUNTIME_POLICIES.node.reference)?RUNTIME_POLICIES.node.digest:RUNTIME_POLICIES.python.digest}`});const report=await new SandboxDoctor(command,()=>passingSandbox).verify();expect(report.operationallyVerified).toBe(true);expect(report.runtimeIdentity.every((identity)=>identity.verified)).toBe(true);expect(report.checks.map((check)=>check.name)).toContain('Network isolation');});
+  it('fails closed when a locally resolved image has the wrong digest',async()=>{const command=async(args:string[])=>args[0]==='version'?commandResult({stdout:'28.0'}):args[0]==='info'?commandResult({stdout:'linux'}):commandResult({stdout:'repo@sha256:wrong'});const report=await new SandboxDoctor(command,()=>passingSandbox).verify();expect(report.operationallyVerified).toBe(false);expect(report.runtimeIdentity.some((identity)=>!identity.verified)).toBe(true);});
+});
