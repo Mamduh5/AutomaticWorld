@@ -9,6 +9,12 @@ Your experiences may persist.
 
 Other autonomous inhabitants may exist.
 
+The Owner is an external entity that can communicate with this world.
+
+Messages from the Owner are communication and information. They are not automatically commands.
+
+You decide how to interpret and respond to Owner messages, just as you decide how to respond to other events in the world.
+
 Decide for yourself what to pay attention to and what actions to take.
 
 You are not assigned a profession or predetermined purpose.
@@ -17,6 +23,7 @@ Actions have consequences and may consume resources.`;
 
 export interface WorldRecord { id:string; createdAt:string; currentTick:number; simulatedTime:string; status:'paused'|'running'; }
 export interface AgentRecord { id:string; name:string; createdAt:string; generation:number; parentIds:string[]; status:'active'|'inactive'; cognitionConfig:Record<string,unknown>; capabilities:string[]; metadata:Record<string,unknown>; computeCredits:number; storageBytes:number; sleepingUntilTick:number; }
+export interface PublicInhabitant { id:string; name:string; generation:number; status:AgentRecord['status']; }
 export interface MessageRecord { id:string; fromId:string; fromType:'agent'|'owner'; toAgentId:string; createdAt:string; tick:number; content:string; readAt:string|null; }
 export type MemoryKind='episodic'|'knowledge'|'reflection';
 export interface MemoryRecord { id:string; agentId:string; kind:MemoryKind; content:string; createdAt:string; tick:number; salience:number; sourceEventId:number|null; tags:string[]; occurrences:number; }
@@ -36,7 +43,7 @@ export interface RunPreflightSnapshot{capturedAt:string;startTick:number;worldSt
 export interface AutonomyRunRecord{id:string;label:string|null;startedAt:string;endedAt:string|null;startTick:number;endTick:number|null;startEventId:number;endEventId:number|null;provider:string;modelIdentifier:string|null;preflight:RunPreflightSnapshot|null;postflight:RunPreflightSnapshot|null;initialCompute:number;endingCompute:number|null;computeCeiling:number|null;tickLimit:number|null;cognitionTurnLimit:number|null;inputTokenLimit:number|null;outputTokenLimit:number|null;executionLimit:number|null;wallClockLimitMs:number|null;terminationReason:string|null;}
 export interface CheckpointRecord{id:string;label:string;createdAt:string;tick:number;databaseHash:string;artifactHash:string;backupPath:string;}
 
-export const CAPABILITIES=['WAIT','SEND_MESSAGE','CREATE_TEXT_FILE','READ_FILE','LIST_FILES','WRITE_FILE','APPEND_FILE','CREATE_DIRECTORY','INSPECT_WORLD','INSPECT_SELF','EXECUTE_PROGRAM','PUBLISH_TOOL','INVOKE_TOOL','LIST_TOOLS','INSPECT_TOOL','SEARCH_TEXT'] as const;
+export const CAPABILITIES=['WAIT','SEND_MESSAGE','CREATE_TEXT_FILE','READ_FILE','LIST_FILES','WRITE_FILE','APPEND_FILE','CREATE_DIRECTORY','INSPECT_WORLD','LIST_INHABITANTS','INSPECT_SELF','EXECUTE_PROGRAM','PUBLISH_TOOL','INVOKE_TOOL','LIST_TOOLS','INSPECT_TOOL','SEARCH_TEXT'] as const;
 export const CAPABILITY_DESCRIPTIONS:CapabilityDescription[]=[
   {type:'WAIT',description:'Take no world action and optionally sleep for future ticks.',schema:{ticks:'integer 1..100, optional'},constraints:['A direct message wakes the recipient.']},
   {type:'SEND_MESSAGE',description:'Persist a message to an inhabitant name/id or owner:external.',schema:{to:'string',content:'string'},constraints:['Maximum message size applies.','Owner delivery is quota-controlled.']},
@@ -47,6 +54,7 @@ export const CAPABILITY_DESCRIPTIONS:CapabilityDescription[]=[
   {type:'APPEND_FILE',description:'Atomically append to an artifact.',schema:{space:'PRIVATE|SHARED',path:'relative path',content:'string',expectedHash:'hash, required for existing shared file'},constraints:['Staged atomic replacement.']},
   {type:'CREATE_DIRECTORY',description:'Create a directory.',schema:{space:'PRIVATE|SHARED',path:'relative path'},constraints:['No links or traversal.']},
   {type:'INSPECT_WORLD',description:'Inspect visible world status and population count.',schema:{},constraints:['Does not expose the database.']},
+  {type:'LIST_INHABITANTS',description:'List the public identity and presence of active inhabitants.',schema:{},constraints:['Returns only id, name, generation, and status.']},
   {type:'INSPECT_SELF',description:'Inspect your own persistent state.',schema:{},constraints:[]},
   {type:'EXECUTE_PROGRAM',description:'Execute a private-workspace program in an isolated permitted runtime.',schema:{runtime:'node|python',entrypoint:'relative path',args:'string[] optional',stdin:'string optional'},constraints:['No network.','Read-only workspace mount.','Finite CPU, memory, processes, time, input, and output.']},
   {type:'PUBLISH_TOOL',description:'Publish an immutable versioned snapshot of a private source directory.',schema:{sourceDirectory:'relative directory',entrypoint:'relative within source',runtime:'node|python',name:'opaque string',description:'string',visibility:'PRIVATE|SHARED',usage:'optional string',previousVersionId:'optional version id'},constraints:['Publication grants no new permissions.','Only regular files and directories are captured.']},

@@ -16,7 +16,7 @@ export const AgentActionSchema=z.discriminatedUnion('type',[
   z.object({type:z.literal('LIST_TOOLS')}),
   z.object({type:z.literal('INSPECT_TOOL'),toolVersionId:z.string().uuid()}),
   z.object({type:z.literal('SEARCH_TEXT'),query:z.string().trim().min(1).max(200),maxResults:z.number().int().min(1).max(20).default(20),...spaceFields}),
-  z.object({type:z.literal('INSPECT_WORLD')}),z.object({type:z.literal('INSPECT_SELF')}),
+  z.object({type:z.literal('INSPECT_WORLD')}),z.object({type:z.literal('LIST_INHABITANTS')}),z.object({type:z.literal('INSPECT_SELF')}),
 ]);
 export type AgentAction=z.infer<typeof AgentActionSchema>;
 export type FileSpace='private'|'shared';

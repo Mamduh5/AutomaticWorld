@@ -8,6 +8,8 @@
 
 - Identity, state, messages, memories, executions, events, and artifacts persist.
 - Observations are explicit and partial; inhabitants never receive the database or secrets.
+- Active inhabitant presence is public as identity, name, generation, and status; private memories, files, messages, resources, configuration, metadata, and parent data remain private.
+- The Owner is an external entity that can communicate with this world. Owner messages are communication and information, not automatically commands; each inhabitant decides how to interpret and respond to them as it does other world events.
 - Private storage belongs to one inhabitant. Shared storage is readable/writable by both under the same path, quota, audit, and optimistic-concurrency laws.
 - Links, junctions, reparse traversal, absolute paths, traversal paths, and redirections are forbidden.
 - Writes stage, flush, and rename before accounting and event publication.
