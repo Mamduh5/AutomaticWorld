@@ -12,7 +12,7 @@ The world validates a proposed action before tool dispatch. File tools cause rea
 
 Filesystem mutation coordination journals the expected before/after hash and byte boundary before promotion. Startup reconciliation compares the durable target with those hashes: an unpromoted mutation is marked failed, a promoted mutation completes its one SQLite accounting/revision/event transaction, and an unexpected target is marked failed and audited. Database commits are idempotent, and orphan staging/backup files are recursively cleaned within authorized roots.
 
-Agent-to-Owner messages first enter `owner_outbox`. `OwnerGatewayDispatcher` records success per transport, skips successful transports on retry, and marks the aggregate outbox delivered only when every enabled transport succeeds. Console, SMTP email, and LINE push are kernel-selected adapters.
+Agent-to-Owner messages first enter `owner_outbox`. `OwnerGatewayDispatcher` records success per transport, skips successful transports on retry, and marks the aggregate outbox delivered only when every enabled transport succeeds. Console, SMTP email, and LINE push are kernel-selected adapters. Email authentication and `From` use one kernel-owned world mailbox; the independently configured Owner destination is only the recipient.
 
 Owner-to-agent CLI and LINE messages enter the transport-independent `OwnerIngressService`. Acceptance and external event identity are durable before asynchronous LINE routing. Only explicit recipient syntax is accepted; delivery becomes an ordinary persistent `owner:external` message and uses the existing direct-message wake rule.
 

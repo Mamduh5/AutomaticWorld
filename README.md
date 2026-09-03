@@ -74,10 +74,12 @@ The agent's private workspace is mounted read-only at `/workspace`. The containe
 An agent may address `owner:external`. This creates a durable outbox record before delivery. Gateways are disabled unless configured and never become general network capabilities.
 
 - Console: `OWNER_CONSOLE_GATEWAY=true`, or CLI `--console`.
-- Email: configure all `OWNER_SMTP_*`, `OWNER_EMAIL_FROM`, and `OWNER_EMAIL_TO` variables from `.env.example`.
+- Email: `WORLD_EMAIL_ADDRESS` is the kernel-owned sending/authentication identity, initially `aychatkub@gmail.com`. Configure its Google App Password only through `WORLD_EMAIL_APP_PASSWORD`; configure the unrelated Owner inbox through `OWNER_EMAIL_DESTINATION`.
 - LINE OA: configure `LINE_CHANNEL_ACCESS_TOKEN` and `LINE_OWNER_DESTINATION_ID`.
 
 The default anti-spam law permits three queued messages per inhabitant per 60 world ticks, 100 total queued messages, and 4,000 bytes per Owner message. Successful delivery is idempotent per outbox message and gateway.
+
+The world mailbox is shared transport infrastructure, not Mam's identity, Toey's identity, or an Owner credential. SMTP configuration remains outside world state and cognition. The email body frames the actual inhabitant message with the originating agent and world tick but does not rewrite that message.
 
 Inbound CLI and LINE messages share `OwnerIngressService`. LINE must be exposed through Owner-controlled HTTPS termination; the local listener binds only `127.0.0.1`. Configure `LINE_CHANNEL_SECRET` and the single allowed `LINE_OWNER_SOURCE_ID`. The handler authenticates the exact raw body before parsing, bounds it, persists event identity for deduplication, and routes only explicit `Mam: ...` or `Toey: ...` text. No source-IP trust is used.
 

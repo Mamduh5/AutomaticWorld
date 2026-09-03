@@ -11,10 +11,10 @@ export class ConsoleOwnerGateway implements OwnerGateway{
 }
 
 export interface MailTransport{sendMail(options:{from:string;to:string;subject:string;text:string;headers:Record<string,string>}):Promise<{messageId?:string}>;}
-export interface EmailGatewayConfig{from:string;to:string;transport:MailTransport;}
+export interface EmailGatewayConfig{worldAddress:string;ownerDestination:string;transport:MailTransport;}
 export class EmailOwnerGateway implements OwnerGateway{
   readonly name='email';constructor(private readonly config:EmailGatewayConfig){}
-  async deliver(message:OwnerOutboxRecord):Promise<GatewayResult>{const result=await this.config.transport.sendMail({from:this.config.from,to:this.config.to,subject:`AutomaticWorld — Message from ${message.agentName}`,text:`World tick: ${message.tick}\nAgent: ${message.agentName}\n\n${message.content}`,headers:{'X-AutomaticWorld-Message-ID':message.id}});return{delivered:true,...(result.messageId?{externalId:result.messageId}:{})};}
+  async deliver(message:OwnerOutboxRecord):Promise<GatewayResult>{try{const result=await this.config.transport.sendMail({from:`AutomaticWorld <${this.config.worldAddress}>`,to:this.config.ownerDestination,subject:`AutomaticWorld — Message from ${message.agentName}`,text:`World tick: ${message.tick}\nAgent: ${message.agentName}\n\n${message.content}`,headers:{'X-AutomaticWorld-Message-ID':message.id}});return{delivered:true,...(result.messageId?{externalId:result.messageId}:{})};}catch{throw new Error('Email delivery failed');}}
 }
 
 export interface LineGatewayConfig{channelAccessToken:string;ownerDestinationId:string;endpoint?:string;fetcher?:typeof fetch;}
@@ -29,8 +29,11 @@ export class OwnerGatewayDispatcher{
   async dispatch(limit=20):Promise<{delivered:number;failed:number}>{let delivered=0,failed=0;for(const message of this.repo.dispatchableOutbox(limit)){let failure:string|null=null;if(this.gateways.length===0)failure='No Owner gateway configured';for(const gateway of this.gateways){if(this.repo.gatewayDelivered(message.id,gateway.name))continue;try{const result=await gateway.deliver(message);if(!result.delivered)throw new Error(`${gateway.name} did not accept delivery`);this.repo.recordGatewayDelivery(message.id,gateway.name,'delivered',null,result.externalId??null);}catch(error){const detail=error instanceof Error?error.message:'Delivery failed';this.repo.recordGatewayDelivery(message.id,gateway.name,'failed',detail,null);failure=failure??detail;}}if(failure){this.repo.updateOutbox(message.id,'failed',failure);this.repo.addEvent('OWNER_MESSAGE_DELIVERY_FAILED',message.tick,message.agentId,null,{outboxId:message.id,error:failure});failed++;}else{this.repo.updateOutbox(message.id,'delivered',null);this.repo.addEvent('OWNER_MESSAGE_DELIVERED',message.tick,message.agentId,null,{outboxId:message.id,gateways:this.gateways.map((g)=>g.name)});delivered++;}}return{delivered,failed};}
 }
 
-export function configuredOwnerGateways(env:NodeJS.ProcessEnv=process.env):OwnerGateway[]{
+export interface WorldSmtpOptions{host:string;port:number;secure:boolean;auth:{user:string;pass:string};}
+export type MailTransportFactory=(options:WorldSmtpOptions)=>MailTransport;
+const nodemailerTransport:MailTransportFactory=(options)=>nodemailer.createTransport(options);
+export function configuredOwnerGateways(env:NodeJS.ProcessEnv=process.env,createMailTransport:MailTransportFactory=nodemailerTransport):OwnerGateway[]{
   const gateways:OwnerGateway[]=[];if(env.OWNER_CONSOLE_GATEWAY==='true')gateways.push(new ConsoleOwnerGateway());
-  if(env.OWNER_SMTP_HOST&&env.OWNER_SMTP_USER&&env.OWNER_SMTP_PASSWORD&&env.OWNER_EMAIL_FROM&&env.OWNER_EMAIL_TO){const transport=nodemailer.createTransport({host:env.OWNER_SMTP_HOST,port:Number(env.OWNER_SMTP_PORT??587),secure:env.OWNER_SMTP_SECURE==='true',auth:{user:env.OWNER_SMTP_USER,pass:env.OWNER_SMTP_PASSWORD}});gateways.push(new EmailOwnerGateway({from:env.OWNER_EMAIL_FROM,to:env.OWNER_EMAIL_TO,transport}));}
+  if(env.WORLD_SMTP_HOST&&env.WORLD_EMAIL_ADDRESS&&env.WORLD_EMAIL_APP_PASSWORD&&env.OWNER_EMAIL_DESTINATION){const transport=createMailTransport({host:env.WORLD_SMTP_HOST,port:Number(env.WORLD_SMTP_PORT??587),secure:env.WORLD_SMTP_SECURE==='true',auth:{user:env.WORLD_EMAIL_ADDRESS,pass:env.WORLD_EMAIL_APP_PASSWORD}});gateways.push(new EmailOwnerGateway({worldAddress:env.WORLD_EMAIL_ADDRESS,ownerDestination:env.OWNER_EMAIL_DESTINATION,transport}));}
   if(env.LINE_CHANNEL_ACCESS_TOKEN&&env.LINE_OWNER_DESTINATION_ID)gateways.push(new LineOwnerGateway({channelAccessToken:env.LINE_CHANNEL_ACCESS_TOKEN,ownerDestinationId:env.LINE_OWNER_DESTINATION_ID}));return gateways;
 }
