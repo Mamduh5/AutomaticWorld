@@ -7,6 +7,7 @@ const validBody={choices:[{message:{content:JSON.stringify({thoughtSummary:'I wi
 
 describe('OpenAI-compatible provider contract',()=>{
   it('accepts a valid structured action and records usage metadata',async()=>{const fetcher=vi.fn(async()=>response(validBody)) as unknown as typeof fetch;const result=await new OpenAICompatibleCognitionProvider({apiKey:'test',fetcher}).think(input);expect(result.selectedAction).toEqual({type:'WAIT',ticks:2});expect(result.reasoningMetadata?.usage).toEqual({total_tokens:12});});
+  it('discards model-supplied provider metadata and retains only kernel measurements',async()=>{const fetcher=vi.fn(async()=>response({choices:[{message:{content:JSON.stringify({thoughtSummary:'wait',selectedAction:{type:'WAIT',ticks:1},reasoningMetadata:{providerError:'untrusted infrastructure detail',providerAttempts:999}})}}],usage:{prompt_tokens:3,completion_tokens:1}})) as unknown as typeof fetch;const result=await new OpenAICompatibleCognitionProvider({apiKey:'test',fetcher}).think(input);expect(result.reasoningMetadata).toMatchObject({inputTokens:3,outputTokens:1,providerAttempts:1,providerRequestSucceeded:true});expect(JSON.stringify(result.reasoningMetadata)).not.toContain('untrusted infrastructure detail');});
   it.each([
     ['malformed JSON',response('not json')],
     ['unsupported action',response({choices:[{message:{content:JSON.stringify({thoughtSummary:'x',selectedAction:{type:'SHELL'}})}}]})],

@@ -55,7 +55,7 @@ pnpm world run --ticks 5 --live
 
 A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
 
-The CLI loads ignored local `.env` configuration when present. Live cognition additionally requires `COGNITION_PROVIDER=openai`; provider identity, model identifier, run limits, token usage, and latency are infrastructure records and never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
+The CLI loads ignored local `.env` configuration when present. Live cognition supports the intended `COGNITION_PROVIDER=openrouter` configuration and an independent optional `openai` configuration through one provider-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
 
 ## Execution
 
