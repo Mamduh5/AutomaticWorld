@@ -3,4 +3,6 @@ export interface ResourceRules {
   storageLimitBytes:number;
   computeCostPerTurn:number;
   computeCostPerAction:number;
+  executionBaseCost:number;
+  executionMaxCost:number;
 }

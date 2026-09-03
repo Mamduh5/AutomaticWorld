@@ -1,54 +1,73 @@
 # Autonomous AI World
 
-A local-first, persistent, auditable world kernel whose genesis inhabitants are exactly **Mam** and **Toey**. The kernel supplies capabilities, constraints, resources, persistence, and consequences. It does not assign purposes, professions, quests, or a civilization script.
+A local-first, persistent world kernel inhabited by exactly Mam and Toey. The world supplies capabilities, causal constraints, finite resources, and audit history. It supplies no professions, goals, quests, economy, civilization stages, or scripted conversations.
 
-## Requirements and setup
+## Setup
 
-- Node.js 22+
-- pnpm 10+
+Requires Node.js 22+, pnpm 10+, SQLite (embedded), and optionally Docker Engine/Desktop for `EXECUTE_PROGRAM`.
 
 ```bash
 pnpm install
 pnpm check
 pnpm world genesis
-pnpm world status
+pnpm world resume
 pnpm world tick
-pnpm world run --ticks 10
+pnpm world status
 ```
 
-Data is stored under `world-data/` by default. Set `WORLD_DATA_DIR` to use another location. The SQLite database and artifact directories survive process restarts. Running Genesis repeatedly is safe and never duplicates the population.
+State and real artifacts persist below `world-data/` by default. `WORLD_DATA_DIR` selects another Owner-controlled root. Genesis is idempotent and upgrades capabilities without replacing stable identities.
 
 ## CLI
 
 ```text
 pnpm world genesis
 pnpm world status
-pnpm world agents
-pnpm world inspect Mam
+pnpm world pause
+pnpm world resume
 pnpm world tick
 pnpm world run --ticks 10
-pnpm world events
-pnpm world memories Mam
+pnpm world run --continuous --tick-ms 5000
+pnpm world run --continuous --ticks 100 --compute-ceiling 1000
+pnpm world agents
+pnpm world inspect Mam
+pnpm world memories Mam --query "python error"
+pnpm world messages Mam
+pnpm world executions Mam
 pnpm world files Mam
-pnpm world message Mam "Hello Mam"
+pnpm world files Mam --shared
+pnpm world events
+pnpm world activity --last 50
+pnpm world message Mam "Owner to Mam"
+pnpm world owner-outbox
+pnpm world gateway dispatch --console
 pnpm world run --ticks 5 --live
 ```
 
-Normal runs use deterministic WAIT cognition and never call an LLM. `--live` is explicit and requires `OPENAI_API_KEY`; `OPENAI_BASE_URL` and `OPENAI_MODEL` configure an OpenAI-compatible endpoint. Live output is schema-validated before execution.
+A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
 
-## Repository boundaries
+## Execution
 
-- `apps/world-cli`: human inspection and control surface
-- `packages/world`: deterministic cycle and laws
-- `packages/agents`: identity and future birth seam
-- `packages/cognition`: provider-independent cognition
-- `packages/memory`: agent-specific memory boundary
-- `packages/resources`: resource rules boundary
-- `packages/tools`: validated action protocol
-- `packages/sandbox`: safe filesystem and future execution abstraction
-- `packages/persistence`: typed SQLite state and immutable events
-- `packages/messaging`: internal/external gateway seam
-- `packages/shared`: domain records and bootstrap text
-- `world-data`: mutable civilization content and state (gitignored)
+`EXECUTE_PROGRAM` supports `node` and `python` only. Docker is invoked with structured arguments and fixed images:
 
-See [Architecture](docs/ARCHITECTURE.md), [World Laws](docs/WORLD-LAWS.md), [Lifecycle](docs/AGENT-LIFECYCLE.md), [Security](docs/SECURITY.md), and [Future Evolution](docs/FUTURE-EVOLUTION.md).
+- `node:22.14.0-alpine3.21`
+- `python:3.13.2-alpine3.21`
+
+The agent's private workspace is mounted read-only at `/workspace`. The container has no network, secrets, database, kernel source, Docker socket, or other agent workspace. See [Security](docs/SECURITY.md).
+
+## Owner gateways
+
+An agent may address `owner:external`. This creates a durable outbox record before delivery. Gateways are disabled unless configured and never become general network capabilities.
+
+- Console: `OWNER_CONSOLE_GATEWAY=true`, or CLI `--console`.
+- Email: configure all `OWNER_SMTP_*`, `OWNER_EMAIL_FROM`, and `OWNER_EMAIL_TO` variables from `.env.example`.
+- LINE OA: configure `LINE_CHANNEL_ACCESS_TOKEN` and `LINE_OWNER_DESTINATION_ID`.
+
+The default anti-spam law permits three queued messages per inhabitant per 60 world ticks, 100 total queued messages, and 4,000 bytes per Owner message. Successful delivery is idempotent per outbox message and gateway.
+
+Normal tests use fake sandboxes and mocked transports. No LLM call or external message is required. Docker integration tests automatically skip when Docker is unavailable.
+
+## Packages
+
+`world` orchestrates laws; `cognition` validates provider decisions; `tools` owns action schemas; `sandbox` owns filesystem/container isolation; `persistence` owns SQLite; `messaging` owns the narrow Owner delivery boundary; `memory` and `resources` expose their domain seams; `agents` retains an unexposed future birth seam.
+
+Read [Architecture](docs/ARCHITECTURE.md), [World Laws](docs/WORLD-LAWS.md), [Agent Lifecycle](docs/AGENT-LIFECYCLE.md), [Security](docs/SECURITY.md), and [Future Evolution](docs/FUTURE-EVOLUTION.md).

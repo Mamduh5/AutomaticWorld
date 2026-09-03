@@ -1,60 +1,78 @@
 import Database from 'better-sqlite3';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { AgentRecord, MemoryKind, MemoryRecord, MessageRecord, WorldEventRecord, WorldRecord } from '../../shared/src/index.js';
+import type { AgentRecord, DeliveryStatus, ExecutionRecord, ExecutionResult, MemoryKind, MemoryRecord, MessageRecord, OwnerOutboxRecord, WorldEventRecord, WorldRecord } from '../../shared/src/index.js';
+const json=<T>(value:string):T=>JSON.parse(value) as T;
 
-const json = <T>(value: string): T => JSON.parse(value) as T;
-
-export class WorldRepository {
-  readonly db: Database.Database;
-
-  constructor(readonly dbPath: string) {
-    mkdirSync(dirname(dbPath), { recursive: true });
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-    this.migrate();
-  }
-
-  close(): void { this.db.close(); }
-
-  private migrate(): void {
+export class WorldRepository{
+  readonly db:Database.Database;
+  constructor(readonly dbPath:string){mkdirSync(dirname(dbPath),{recursive:true});this.db=new Database(dbPath);this.db.pragma('journal_mode = WAL');this.db.pragma('foreign_keys = ON');this.migrate();}
+  close():void{this.db.close();}
+  private columns(table:string):Set<string>{return new Set((this.db.prepare(`PRAGMA table_info(${table})`).all() as {name:string}[]).map((r)=>r.name));}
+  private addColumn(table:string,name:string,definition:string):void{if(!this.columns(table).has(name))this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);}
+  private migrate():void{
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS world (id TEXT PRIMARY KEY, created_at TEXT NOT NULL, current_tick INTEGER NOT NULL, simulated_time TEXT NOT NULL, status TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE, created_at TEXT NOT NULL, generation INTEGER NOT NULL, parent_ids TEXT NOT NULL, status TEXT NOT NULL, cognition_config TEXT NOT NULL, capabilities TEXT NOT NULL, metadata TEXT NOT NULL, compute_credits INTEGER NOT NULL, storage_bytes INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, from_id TEXT NOT NULL, from_type TEXT NOT NULL, to_agent_id TEXT NOT NULL REFERENCES agents(id), created_at TEXT NOT NULL, tick INTEGER NOT NULL, content TEXT NOT NULL, read_at TEXT);
       CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), kind TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, tick INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_uid TEXT NOT NULL UNIQUE, tick INTEGER NOT NULL, timestamp TEXT NOT NULL, type TEXT NOT NULL, actor_id TEXT, subject_id TEXT, payload TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS executions (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), tick INTEGER NOT NULL, runtime TEXT NOT NULL, entrypoint TEXT NOT NULL, args TEXT NOT NULL, success INTEGER NOT NULL, exit_code INTEGER, stdout TEXT NOT NULL, stderr TEXT NOT NULL, timed_out INTEGER NOT NULL, duration_ms INTEGER NOT NULL, truncated INTEGER NOT NULL, error TEXT, created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS owner_outbox (id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id), agent_name TEXT NOT NULL, tick INTEGER NOT NULL, created_at TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, delivered_at TEXT);
+      CREATE TABLE IF NOT EXISTS owner_deliveries (outbox_id TEXT NOT NULL REFERENCES owner_outbox(id), gateway TEXT NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, external_id TEXT, delivered_at TEXT, PRIMARY KEY(outbox_id,gateway));
+      CREATE TABLE IF NOT EXISTS artifact_revisions (space TEXT NOT NULL, path TEXT NOT NULL, hash TEXT NOT NULL, revision INTEGER NOT NULL, actor_id TEXT NOT NULL, tick INTEGER NOT NULL, PRIMARY KEY(space,path));
+      CREATE TABLE IF NOT EXISTS runner_lease (world_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at INTEGER NOT NULL, acquired_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_memories_agent_tick ON memories(agent_id,tick DESC);
+      CREATE INDEX IF NOT EXISTS idx_outbox_status ON owner_outbox(status,created_at);
     `);
+    this.addColumn('agents','sleeping_until_tick','INTEGER NOT NULL DEFAULT 0');
+    this.addColumn('memories','salience','REAL NOT NULL DEFAULT 0.5');
+    this.addColumn('memories','source_event_id','INTEGER');
+    this.addColumn('memories','tags',`TEXT NOT NULL DEFAULT '[]'`);
+    this.addColumn('memories','fingerprint',`TEXT NOT NULL DEFAULT ''`);
+    this.addColumn('memories','occurrences','INTEGER NOT NULL DEFAULT 1');
   }
-
-  transaction<T>(fn: () => T): T { return this.db.transaction(fn)(); }
-  getWorld(): WorldRecord | null {
-    const r = this.db.prepare('SELECT * FROM world LIMIT 1').get() as any;
-    return r ? { id: r.id, createdAt: r.created_at, currentTick: r.current_tick, simulatedTime: r.simulated_time, status: r.status } : null;
+  transaction<T>(fn:()=>T):T{return this.db.transaction(fn)();}
+  getWorld():WorldRecord|null{const r=this.db.prepare('SELECT * FROM world LIMIT 1').get() as any;return r?{id:r.id,createdAt:r.created_at,currentTick:r.current_tick,simulatedTime:r.simulated_time,status:r.status}:null;}
+  createWorld(w:WorldRecord):void{this.db.prepare('INSERT INTO world VALUES(?,?,?,?,?)').run(w.id,w.createdAt,w.currentTick,w.simulatedTime,w.status);}
+  setTick(tick:number,time:string):void{this.db.prepare('UPDATE world SET current_tick=?,simulated_time=?').run(tick,time);}
+  setWorldStatus(status:WorldRecord['status']):void{this.db.prepare('UPDATE world SET status=?').run(status);}
+  createAgent(a:AgentRecord):void{this.db.prepare('INSERT INTO agents(id,name,created_at,generation,parent_ids,status,cognition_config,capabilities,metadata,compute_credits,storage_bytes,sleeping_until_tick) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(a.id,a.name,a.createdAt,a.generation,JSON.stringify(a.parentIds),a.status,JSON.stringify(a.cognitionConfig),JSON.stringify(a.capabilities),JSON.stringify(a.metadata),a.computeCredits,a.storageBytes,a.sleepingUntilTick);}
+  private mapAgent(r:any):AgentRecord{return{id:r.id,name:r.name,createdAt:r.created_at,generation:r.generation,parentIds:json(r.parent_ids),status:r.status,cognitionConfig:json(r.cognition_config),capabilities:json(r.capabilities),metadata:json(r.metadata),computeCredits:r.compute_credits,storageBytes:r.storage_bytes,sleepingUntilTick:r.sleeping_until_tick??0};}
+  getAgent(ref:string):AgentRecord|null{const r=this.db.prepare('SELECT * FROM agents WHERE id=? OR name=? COLLATE NOCASE LIMIT 1').get(ref,ref);return r?this.mapAgent(r):null;}
+  listAgents():AgentRecord[]{return(this.db.prepare('SELECT * FROM agents ORDER BY created_at,name').all() as any[]).map((r)=>this.mapAgent(r));}
+  updateCapabilities(id:string,capabilities:string[]):void{this.db.prepare('UPDATE agents SET capabilities=? WHERE id=?').run(JSON.stringify(capabilities),id);}
+  updateResources(id:string,compute:number,storage:number):void{this.db.prepare('UPDATE agents SET compute_credits=?,storage_bytes=? WHERE id=?').run(Math.max(0,compute),Math.max(0,storage),id);}
+  setSleepingUntil(id:string,tick:number):void{this.db.prepare('UPDATE agents SET sleeping_until_tick=? WHERE id=?').run(tick,id);}
+  addEvent(type:string,tick:number,actorId:string|null,subjectId:string|null,payload:Record<string,unknown>={}):WorldEventRecord{const eventUid=randomUUID(),timestamp=new Date().toISOString();const result=this.db.prepare('INSERT INTO events(event_uid,tick,timestamp,type,actor_id,subject_id,payload) VALUES(?,?,?,?,?,?,?)').run(eventUid,tick,timestamp,type,actorId,subjectId,JSON.stringify(payload));return{id:Number(result.lastInsertRowid),eventUid,tick,timestamp,type,actorId,subjectId,payload};}
+  listEvents(limit=50):WorldEventRecord[]{return(this.db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit) as any[]).map((r)=>({id:r.id,eventUid:r.event_uid,tick:r.tick,timestamp:r.timestamp,type:r.type,actorId:r.actor_id,subjectId:r.subject_id,payload:json(r.payload)}));}
+  sendMessage(fromId:string,fromType:MessageRecord['fromType'],toAgentId:string,tick:number,content:string):MessageRecord{const m:MessageRecord={id:randomUUID(),fromId,fromType,toAgentId,tick,content,createdAt:new Date().toISOString(),readAt:null};this.transaction(()=>{this.db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?)').run(m.id,m.fromId,m.fromType,m.toAgentId,m.createdAt,m.tick,m.content,m.readAt);this.setSleepingUntil(toAgentId,tick);});return m;}
+  messagesFor(id:string,limit=20):MessageRecord[]{return(this.db.prepare('SELECT * FROM messages WHERE to_agent_id=? ORDER BY created_at DESC LIMIT ?').all(id,limit) as any[]).map((r)=>({id:r.id,fromId:r.from_id,fromType:r.from_type,toAgentId:r.to_agent_id,createdAt:r.created_at,tick:r.tick,content:r.content,readAt:r.read_at}));}
+  addMemory(agentId:string,kind:MemoryKind,content:string,tick:number,options:{salience?:number;sourceEventId?:number;tags?:string[]}={}):MemoryRecord{
+    const fingerprint=createHash('sha256').update(`${kind}\0${content.trim().toLowerCase()}`).digest('hex'),latest=this.db.prepare('SELECT * FROM memories WHERE agent_id=? ORDER BY tick DESC,created_at DESC LIMIT 1').get(agentId) as any;
+    if(latest?.fingerprint===fingerprint){this.db.prepare('UPDATE memories SET occurrences=occurrences+1,tick=?,created_at=? WHERE id=?').run(tick,new Date().toISOString(),latest.id);return this.mapMemory(this.db.prepare('SELECT * FROM memories WHERE id=?').get(latest.id));}
+    const m={id:randomUUID(),agentId,kind,content,createdAt:new Date().toISOString(),tick,salience:Math.max(0,Math.min(1,options.salience??0.5)),sourceEventId:options.sourceEventId??null,tags:options.tags??[],occurrences:1};
+    this.db.prepare('INSERT INTO memories(id,agent_id,kind,content,created_at,tick,salience,source_event_id,tags,fingerprint,occurrences) VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(m.id,m.agentId,m.kind,m.content,m.createdAt,m.tick,m.salience,m.sourceEventId,JSON.stringify(m.tags),fingerprint,1);return m;
   }
-  createWorld(world: WorldRecord): void { this.db.prepare('INSERT INTO world VALUES (?, ?, ?, ?, ?)').run(world.id, world.createdAt, world.currentTick, world.simulatedTime, world.status); }
-  setTick(tick: number, simulatedTime: string): void { this.db.prepare('UPDATE world SET current_tick=?, simulated_time=?').run(tick, simulatedTime); }
-  setWorldStatus(status: WorldRecord['status']): void { this.db.prepare('UPDATE world SET status=?').run(status); }
-  createAgent(a: AgentRecord): void {
-    this.db.prepare('INSERT INTO agents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(a.id, a.name, a.createdAt, a.generation, JSON.stringify(a.parentIds), a.status, JSON.stringify(a.cognitionConfig), JSON.stringify(a.capabilities), JSON.stringify(a.metadata), a.computeCredits, a.storageBytes);
+  private mapMemory(r:any):MemoryRecord{return{id:r.id,agentId:r.agent_id,kind:r.kind,content:r.content,createdAt:r.created_at,tick:r.tick,salience:r.salience??0.5,sourceEventId:r.source_event_id??null,tags:json(r.tags??'[]'),occurrences:r.occurrences??1};}
+  memoriesFor(id:string,limit=20):MemoryRecord[]{return(this.db.prepare('SELECT * FROM memories WHERE agent_id=? ORDER BY tick DESC,created_at DESC LIMIT ?').all(id,limit) as any[]).map((r)=>this.mapMemory(r));}
+  relevantMemories(id:string,query:string,currentTick:number,limit=12):MemoryRecord[]{const terms=[...new Set(query.toLowerCase().match(/[a-z0-9_]{3,}/g)??[])].slice(0,20);return(this.db.prepare('SELECT * FROM memories WHERE agent_id=? ORDER BY tick DESC LIMIT 500').all(id) as any[]).map((r)=>this.mapMemory(r)).map((m)=>({m,score:m.salience*3+1/(1+Math.max(0,currentTick-m.tick)/20)+terms.filter((t)=>`${m.content} ${m.tags.join(' ')}`.toLowerCase().includes(t)).length*2})).sort((a,b)=>b.score-a.score||b.m.tick-a.m.tick).slice(0,limit).map(({m})=>m);}
+  recordExecution(agentId:string,tick:number,runtime:'node'|'python',entrypoint:string,args:string[],result:ExecutionResult):ExecutionRecord{const record:ExecutionRecord={id:randomUUID(),agentId,tick,runtime,entrypoint,args,createdAt:new Date().toISOString(),...result};this.db.prepare('INSERT INTO executions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(record.id,agentId,tick,runtime,entrypoint,JSON.stringify(args),result.success?1:0,result.exitCode,result.stdout,result.stderr,result.timedOut?1:0,result.durationMs,result.truncated?1:0,result.error??null,record.createdAt);return record;}
+  executionsFor(id:string,limit=20):ExecutionRecord[]{return(this.db.prepare('SELECT * FROM executions WHERE agent_id=? ORDER BY created_at DESC LIMIT ?').all(id,limit) as any[]).map((r)=>({id:r.id,agentId:r.agent_id,tick:r.tick,runtime:r.runtime,entrypoint:r.entrypoint,args:json(r.args),success:!!r.success,exitCode:r.exit_code,stdout:r.stdout,stderr:r.stderr,timedOut:!!r.timed_out,durationMs:r.duration_ms,truncated:!!r.truncated,...(r.error?{error:r.error}:{}),createdAt:r.created_at}));}
+  setArtifactRevision(space:string,pathValue:string,hash:string,actorId:string,tick:number):number{const old=this.db.prepare('SELECT revision FROM artifact_revisions WHERE space=? AND path=?').get(space,pathValue) as {revision:number}|undefined;const revision=(old?.revision??0)+1;this.db.prepare('INSERT INTO artifact_revisions VALUES(?,?,?,?,?,?) ON CONFLICT(space,path) DO UPDATE SET hash=excluded.hash,revision=excluded.revision,actor_id=excluded.actor_id,tick=excluded.tick').run(space,pathValue,hash,revision,actorId,tick);return revision;}
+  queueOwnerMessage(agent:AgentRecord,tick:number,content:string,maxQueued:number,maxPerHour:number):OwnerOutboxRecord{
+    const queued=(this.db.prepare("SELECT count(*) count FROM owner_outbox WHERE status IN ('pending','retrying')").get() as any).count as number;if(queued>=maxQueued)throw new Error('Owner outbox capacity reached');
+    const recent=(this.db.prepare('SELECT count(*) count FROM owner_outbox WHERE agent_id=? AND tick>?').get(agent.id,tick-60) as any).count as number;if(recent>=maxPerHour)throw new Error('Owner delivery world-hour limit reached');
+    const r:OwnerOutboxRecord={id:randomUUID(),agentId:agent.id,agentName:agent.name,tick,createdAt:new Date().toISOString(),content,status:'pending',attempts:0,lastError:null,deliveredAt:null};this.db.prepare('INSERT INTO owner_outbox VALUES(?,?,?,?,?,?,?,?,?,?)').run(r.id,r.agentId,r.agentName,r.tick,r.createdAt,r.content,r.status,r.attempts,r.lastError,r.deliveredAt);return r;
   }
-  private mapAgent(r: any): AgentRecord { return { id: r.id, name: r.name, createdAt: r.created_at, generation: r.generation, parentIds: json(r.parent_ids), status: r.status, cognitionConfig: json(r.cognition_config), capabilities: json(r.capabilities), metadata: json(r.metadata), computeCredits: r.compute_credits, storageBytes: r.storage_bytes }; }
-  getAgent(ref: string): AgentRecord | null { const r = this.db.prepare('SELECT * FROM agents WHERE id=? OR name=? COLLATE NOCASE LIMIT 1').get(ref, ref); return r ? this.mapAgent(r) : null; }
-  listAgents(): AgentRecord[] { return (this.db.prepare('SELECT * FROM agents ORDER BY created_at, name').all() as any[]).map((r) => this.mapAgent(r)); }
-  updateResources(agentId: string, computeCredits: number, storageBytes: number): void { this.db.prepare('UPDATE agents SET compute_credits=?, storage_bytes=? WHERE id=?').run(computeCredits, storageBytes, agentId); }
-  addEvent(type: string, tick: number, actorId: string | null, subjectId: string | null, payload: Record<string, unknown> = {}): WorldEventRecord {
-    const eventUid = randomUUID(), timestamp = new Date().toISOString();
-    const result = this.db.prepare('INSERT INTO events(event_uid,tick,timestamp,type,actor_id,subject_id,payload) VALUES(?,?,?,?,?,?,?)').run(eventUid, tick, timestamp, type, actorId, subjectId, JSON.stringify(payload));
-    return { id: Number(result.lastInsertRowid), eventUid, tick, timestamp, type, actorId, subjectId, payload };
-  }
-  listEvents(limit = 50): WorldEventRecord[] { return (this.db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit) as any[]).map((r) => ({ id: r.id, eventUid: r.event_uid, tick: r.tick, timestamp: r.timestamp, type: r.type, actorId: r.actor_id, subjectId: r.subject_id, payload: json(r.payload) })); }
-  sendMessage(fromId: string, fromType: MessageRecord['fromType'], toAgentId: string, tick: number, content: string): MessageRecord {
-    const m: MessageRecord = { id: randomUUID(), fromId, fromType, toAgentId, tick, content, createdAt: new Date().toISOString(), readAt: null };
-    this.db.prepare('INSERT INTO messages VALUES(?,?,?,?,?,?,?,?)').run(m.id,m.fromId,m.fromType,m.toAgentId,m.createdAt,m.tick,m.content,m.readAt); return m;
-  }
-  messagesFor(agentId: string, limit = 20): MessageRecord[] { return (this.db.prepare('SELECT * FROM messages WHERE to_agent_id=? ORDER BY created_at DESC LIMIT ?').all(agentId,limit) as any[]).map((r) => ({ id:r.id,fromId:r.from_id,fromType:r.from_type,toAgentId:r.to_agent_id,createdAt:r.created_at,tick:r.tick,content:r.content,readAt:r.read_at })); }
-  addMemory(agentId: string, kind: MemoryKind, content: string, tick: number): MemoryRecord { const m={id:randomUUID(),agentId,kind,content,createdAt:new Date().toISOString(),tick}; this.db.prepare('INSERT INTO memories VALUES(?,?,?,?,?,?)').run(m.id,m.agentId,m.kind,m.content,m.createdAt,m.tick); return m; }
-  memoriesFor(agentId: string, limit = 20): MemoryRecord[] { return (this.db.prepare('SELECT * FROM memories WHERE agent_id=? ORDER BY created_at DESC LIMIT ?').all(agentId,limit) as any[]).map((r)=>({id:r.id,agentId:r.agent_id,kind:r.kind,content:r.content,createdAt:r.created_at,tick:r.tick})); }
+  private mapOutbox(r:any):OwnerOutboxRecord{return{id:r.id,agentId:r.agent_id,agentName:r.agent_name,tick:r.tick,createdAt:r.created_at,content:r.content,status:r.status,attempts:r.attempts,lastError:r.last_error,deliveredAt:r.delivered_at};}
+  listOutbox(limit=100):OwnerOutboxRecord[]{return(this.db.prepare('SELECT * FROM owner_outbox ORDER BY created_at DESC LIMIT ?').all(limit) as any[]).map((r)=>this.mapOutbox(r));}
+  dispatchableOutbox(limit=20):OwnerOutboxRecord[]{return(this.db.prepare("SELECT * FROM owner_outbox WHERE status IN ('pending','failed','retrying') ORDER BY created_at LIMIT ?").all(limit) as any[]).map((r)=>this.mapOutbox(r));}
+  updateOutbox(id:string,status:DeliveryStatus,error:string|null):void{this.db.prepare('UPDATE owner_outbox SET status=?,attempts=attempts+1,last_error=?,delivered_at=CASE WHEN ?=\'delivered\' THEN ? ELSE delivered_at END WHERE id=? AND status<>\'delivered\'').run(status,error,status,new Date().toISOString(),id);}
+  gatewayDelivered(outboxId:string,gateway:string):boolean{return!!this.db.prepare("SELECT 1 FROM owner_deliveries WHERE outbox_id=? AND gateway=? AND status='delivered'").get(outboxId,gateway);}
+  recordGatewayDelivery(outboxId:string,gateway:string,status:'delivered'|'failed',error:string|null,externalId:string|null):void{this.db.prepare(`INSERT INTO owner_deliveries(outbox_id,gateway,status,attempts,last_error,external_id,delivered_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(outbox_id,gateway) DO UPDATE SET status=excluded.status,attempts=owner_deliveries.attempts+1,last_error=excluded.last_error,external_id=COALESCE(excluded.external_id,owner_deliveries.external_id),delivered_at=COALESCE(excluded.delivered_at,owner_deliveries.delivered_at)`).run(outboxId,gateway,status,1,error,externalId,status==='delivered'?new Date().toISOString():null);}
+  acquireRunnerLease(token:string,ttlMs:number):boolean{const world=this.getWorld();if(!world)throw new Error('World not initialized');const now=Date.now();return this.transaction(()=>{const current=this.db.prepare('SELECT * FROM runner_lease WHERE world_id=?').get(world.id) as any;if(current&&current.expires_at>=now&&current.token!==token)return false;this.db.prepare('INSERT INTO runner_lease VALUES(?,?,?,?) ON CONFLICT(world_id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at,acquired_at=excluded.acquired_at').run(world.id,token,now+ttlMs,new Date().toISOString());return true;});}
+  renewRunnerLease(token:string,ttlMs:number):boolean{const result=this.db.prepare('UPDATE runner_lease SET expires_at=? WHERE token=? AND expires_at>=?').run(Date.now()+ttlMs,token,Date.now());return result.changes===1;}
+  releaseRunnerLease(token:string):void{this.db.prepare('DELETE FROM runner_lease WHERE token=?').run(token);}
 }

@@ -2,12 +2,12 @@
 
 Recommended next work:
 
-1. Harden filesystem operations against pre-existing symlink/reparse-point attacks and make quota writes transactional via staging.
-2. Add message read receipts and relevance retrieval without weakening agent ownership.
-3. Add a Docker-backed `ExecutionSandbox` with immutable images, no network by default, bounded CPU/memory/time, and a scrubbed environment.
-4. Add provider adapters with retries, budgets, telemetry, and conformance tests.
-5. Add pause/resume and carefully supervised continuous mode.
-6. Add an API/read-only dashboard over the same engine.
-7. Only after operational safety, design descendant proposals with explicit resource costs, partial cultural inheritance, and optional mutation. Do not expose birth until its world consequences are reviewed.
+1. Pin Docker images by reviewed digest and add image provenance/update procedures.
+2. Add crash-recovery reconciliation between promoted artifacts and SQLite accounting, plus platform-specific Windows reparse-point native checks.
+3. Add supervised execution tiers and stronger runtime policy enforcement without exposing image selection or network.
+4. Add LINE inbound webhook ingestion with signature verification, Owner identity restriction, durable deduplication, and asynchronous world delivery.
+5. Improve memory consolidation and retrieval evaluation while retaining strict agent ownership and local operation.
+6. Add a read-only activity API/dashboard and operational health metrics.
+7. Only after sustained safe learning/experimentation, review a descendant proposal with explicit resource costs, partial cultural inheritance, and no complete memory copy.
 
-None of these steps prescribe what Mam or Toey should value or create. There is no technology tree or intended civilization trajectory.
+Birth/reproduction is not an action. There are no genomes, mutations, mates, or population expansion in this milestone. None of these future steps prescribe what Mam or Toey should value, attempt, or become.

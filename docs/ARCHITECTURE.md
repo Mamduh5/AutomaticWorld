@@ -1,13 +1,17 @@
 # Architecture
 
-The world kernel owns time, observation construction, validated action dispatch, resource accounting, persistence, and audit. Cognition only proposes a structured action from information in an explicit observation. Tool handlers alone cause effects.
+The kernel separates persistent state, cognition, observations, validated actions, filesystem effects, container execution, memory retrieval, resource accounting, messaging, and external Owner delivery.
 
-SQLite maintains practical state in `world`, `agents`, `messages`, and `memories`. The append-only `events` table is an audit/history stream, not the sole state store. Filesystem artifacts are real files below `world-data`; they are never replaced by achievement flags.
+SQLite stores practical state in `world`, `agents`, `messages`, `memories`, `executions`, `owner_outbox`, `owner_deliveries`, `artifact_revisions`, and `runner_lease`. The append-only `events` table remains the historical audit stream rather than the only state store. Schema migration adds columns/tables in place and preserves Milestone 1 state.
 
-Dependencies point inward: CLI selects adapters; the world depends on interfaces and domain packages; cognition providers cannot directly access persistence, the host filesystem, environment variables, or tools. `OwnerGateway` and `ExecutionSandbox` are inactive adapter seams. A dashboard can later use the engine without changing domain rules.
+An observation contains only self state, relevant event summaries, addressed messages, separately listed private/shared artifacts, recent self-owned executions, relevant self-owned memories, resources, and structured capability descriptions. Cognition has no repository, filesystem, environment, gateway, or Docker access.
 
-The owner is `owner:external`, not an `Agent`. Owner messages share persistent messaging but remain distinguishable and carry no automatic obedience semantics.
+The world validates a proposed action before tool dispatch. File tools cause real staged artifacts. `EXECUTE_PROGRAM` runs an existing private artifact through `ExecutionSandbox`; the Docker implementation mounts only that workspace. Actual exit status/stdout/stderr are persisted, exposed in later observations, and summarized as episodic evidence—not as an XP or skill claim.
+
+Agent-to-Owner messages first enter `owner_outbox`. `OwnerGatewayDispatcher` records success per transport, skips successful transports on retry, and marks the aggregate outbox delivered only when every enabled transport succeeds. Console, SMTP email, and LINE push are kernel-selected adapters.
+
+Continuous operation uses a renewable SQLite lease. Status and process existence are distinct: `running` permits cycles, while an explicit CLI process performs them. A database status never auto-launches a runner.
 
 ## Kernel/content boundary
 
-Source code, schemas, policies, quotas, and adapters are **WORLD KERNEL**, controlled by the owner/developer. Agent private workspaces, shared files, messages, memories, and other artifacts are **WORLD CONTENT**. No agent action targets kernel source.
+Source, database, gateway configuration, credentials, Docker policy, quotas, and adapters are **WORLD KERNEL**. Agent workspaces, shared artifacts, messages, memories, and execution results are **WORLD CONTENT**. No action can target kernel source or world database paths.
