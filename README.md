@@ -14,6 +14,7 @@ pnpm world resume
 pnpm world tick
 pnpm world status
 pnpm world doctor
+pnpm world doctor --live
 ```
 
 State and real artifacts persist below `world-data/` by default. `WORLD_DATA_DIR` selects another Owner-controlled root. Genesis is idempotent and upgrades capabilities without replacing stable identities.
@@ -29,9 +30,11 @@ pnpm world tick
 pnpm world run --ticks 10
 pnpm world run --continuous --tick-ms 5000
 pnpm world run --continuous --ticks 100 --compute-ceiling 1000
-pnpm world experiment --live --ticks 20 --compute-ceiling 500 --execution-limit 10 --wall-ms 300000
+pnpm world checkpoint create genesis-live-001-before
+pnpm world experiment --live --label genesis-live-001 --ticks 25 --max-cognition-turns 50 --max-input-tokens 250000 --max-output-tokens 50000 --compute-ceiling 1000 --execution-limit 20 --wall-ms 900000
 pnpm world runs
 pnpm world run-report <run-id>
+pnpm world experiment-report <run-id-or-label>
 pnpm world agents
 pnpm world inspect Mam
 pnpm world memories Mam --query "python error"
@@ -51,6 +54,8 @@ pnpm world run --ticks 5 --live
 ```
 
 A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
+
+The CLI loads ignored local `.env` configuration when present. Live cognition additionally requires `COGNITION_PROVIDER=openai`; provider identity, model identifier, run limits, token usage, and latency are infrastructure records and never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
 
 ## Execution
 

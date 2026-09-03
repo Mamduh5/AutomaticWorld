@@ -18,7 +18,9 @@ Owner-to-agent CLI and LINE messages enter the transport-independent `OwnerIngre
 
 Continuous operation uses a renewable SQLite lease. Status and process existence are distinct: `running` permits cycles, while an explicit CLI process performs them. A database status never auto-launches a runner.
 
-Bounded continuous/live experiments create `autonomy_runs` records with provider name, ticks, compute/execution/wall limits, and termination reason. The runner opens a circuit breaker for repeated provider or Docker-infrastructure failures, but not for an inhabitant program's ordinary nonzero exit. Reports derive factual counts from persisted events.
+Bounded continuous/live experiments create `autonomy_runs` records with a factual label, model identifier, preflight/postflight snapshots, event boundaries, cognition-turn/token/compute/execution/tick/wall limits, and termination reason. `COGNITION_TURN_COMPLETED`, `MEMORY_RETRIEVED`, and `AUTONOMY_ACTION` provide run/tick/agent/action/result attribution without storing hidden reasoning. The runner opens a circuit breaker for repeated provider or Docker-infrastructure failures, but not for an inhabitant program's ordinary nonzero exit. Reports derive factual counts from persisted events.
+
+Owner-only checkpoints use SQLite's online backup API and regular-file copies of agent, shared, and system/tool-store artifacts. Database and artifact hashes plus the absolute backup reference are recorded; restoration is never automatic and checkpoint creation is not an inhabitant capability.
 
 ## Kernel/content boundary
 
