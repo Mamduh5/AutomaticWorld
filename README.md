@@ -19,6 +19,8 @@ pnpm world doctor --live
 
 State and real artifacts persist below `world-data/` by default. `WORLD_DATA_DIR` selects another Owner-controlled root. Genesis is idempotent and upgrades capabilities without replacing stable identities.
 
+> Migrating an existing universe is different from fresh setup. A Git clone does not contain the world database, artifacts, or secrets. **Do not run genesis on the new PC when migrating an existing world.** Follow the complete [Windows PC migration runbook](docs/WINDOWS-MIGRATION.md) before any live cognition.
+
 ## CLI
 
 ```text
@@ -38,6 +40,8 @@ pnpm world experiment-report <run-id-or-label>
 pnpm world agents
 pnpm world debug descendant-proposals
 pnpm world debug lineage <agent-id-or-name>
+pnpm world debug runner-lease
+pnpm world debug cognition-context <agent-id-or-name>
 pnpm world inspect Mam
 pnpm world memories Mam --query "python error"
 pnpm world messages Mam
@@ -74,7 +78,7 @@ The CLI loads ignored local `.env` configuration when present. Live cognition su
 
 The agent's private workspace is mounted read-only at `/workspace`. The container has no network, secrets, database, kernel source, Docker socket, or other agent workspace. See [Security](docs/SECURITY.md).
 
-`pnpm world doctor` checks the CLI, daemon, Linux engine, local image identity, restricted startup, both runtimes, network denial, timeout/output limits, and filesystem isolation. It never starts Docker or pulls by default. `--pull` explicitly permits fetching the reviewed digest references. A missing daemon or image reports `Execution sandbox: NOT OPERATIONALLY VERIFIED`.
+`pnpm world doctor` checks the CLI, daemon, Linux engine, local image identity, restricted startup, both runtimes, network denial, timeout/output limits, filesystem isolation, and runner-lease health. It never pulls by default. `--pull` explicitly permits fetching the reviewed digest references. A missing daemon or image reports `Execution sandbox and runner lease: NOT OPERATIONALLY VERIFIED`.
 
 ## Userland tools
 

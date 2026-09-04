@@ -2,6 +2,7 @@ import { constants as fsConstants,promises as fs } from 'node:fs';
 import { configuredCognitionProvider,OpenAICompatibleCognitionProvider,type ProviderReadiness } from '../../cognition/src/index.js';
 import type { WorldEngine } from '../../world/src/engine.js';
 import { SandboxDoctor,type SandboxDoctorReport } from './doctor.js';
+import { runnerLeaseDoctorChecks } from './runner-lease-doctor.js';
 
 export interface ReadinessCheck{name:string;passed:boolean;required:boolean;detail:string;}
 export interface LiveReadinessReport{readyForLiveExperiment:boolean;checks:ReadinessCheck[];sandbox:SandboxDoctorReport;provider:ProviderReadiness|null;}
@@ -17,7 +18,7 @@ export class LiveReadinessDoctor{
     add('Population',agents.length===2,`${agents.length}`);
     add('Founder identities',agents.length===2&&agents.every((agent)=>this.founderIds[agent.name]===agent.id),agents.map((agent)=>`${agent.name}:${agent.id}`).join(', '));
     add('World state',world?.status==='running',world?.status??'missing');
-    const lease=this.engine.repo.runnerLeaseStatus();add('Runner lease',!lease.present&&!lease.active,lease.present?(lease.active?'active':'stale'):'none');
+    const lease=this.engine.repo.runnerLeaseDiagnostic();for(const check of runnerLeaseDoctorChecks(this.engine.repo))add(check.name,check.passed,check.detail);add('Runner lease availability',!lease.active,lease.active?'active valid lease prevents a second runner':'available for safe acquisition');
     const sandbox=await this.sandboxDoctor.verify(options.pull===undefined?{}:{pull:options.pull});add('Docker sandbox',sandbox.operationallyVerified,sandbox.operationallyVerified?'operationally verified':'not operationally verified');
     add('Available compute',agents.every((agent)=>agent.computeCredits>0),agents.map((agent)=>`${agent.name}=${agent.computeCredits}`).join(', '));
     add('Storage accounting',agents.every((agent)=>agent.storageBytes>=0&&agent.storageBytes<=this.engine.config.initialStorageBytes),agents.map((agent)=>`${agent.name}=${agent.storageBytes}`).join(', '));

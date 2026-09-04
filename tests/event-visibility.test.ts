@@ -13,7 +13,7 @@ afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true
 
 describe('event visibility boundary',()=>{
   it('is deny-by-default and classifies known kernel audit events as Owner-only',()=>{
-    for(const type of ['COGNITION_PROVIDER_ERROR','COGNITION_FALLBACK','RUNNER_STARTED','RUNNER_STOPPED','RUNNER_LEASE_LOST','AUTONOMY_CIRCUIT_BREAKER_OPENED','WORLD_CHECKPOINT_CREATED','FILESYSTEM_RECONCILIATION_STARTED','FILESYSTEM_RECONCILIATION_FAILED','UNKNOWN_FUTURE_KERNEL_EVENT'])expect(eventVisibility({type,payload:{}})).toBe('OWNER_KERNEL_ONLY');
+    for(const type of ['COGNITION_PROVIDER_ERROR','COGNITION_FALLBACK','RUNNER_START_FAILED','RUNNER_STARTED','RUNNER_STOPPED','RUNNER_LEASE_LOST','AUTONOMY_CIRCUIT_BREAKER_OPENED','WORLD_CHECKPOINT_CREATED','FILESYSTEM_RECONCILIATION_STARTED','FILESYSTEM_RECONCILIATION_FAILED','UNKNOWN_FUTURE_KERNEL_EVENT'])expect(eventVisibility({type,payload:{}})).toBe('OWNER_KERNEL_ONLY');
     expect(eventVisibility({type:'PROGRAM_EXECUTION_FAILED',payload:{exitCode:1}})).toBe('AGENT_VISIBLE');
     expect(eventVisibility({type:'PROGRAM_EXECUTION_FAILED',payload:{infrastructureFailure:true,error:'Docker daemon unavailable'}})).toBe('OWNER_KERNEL_ONLY');
   });
