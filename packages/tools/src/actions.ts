@@ -16,6 +16,9 @@ export const AgentActionSchema=z.discriminatedUnion('type',[
   z.object({type:z.literal('LIST_TOOLS')}),
   z.object({type:z.literal('INSPECT_TOOL'),toolVersionId:z.string().uuid()}),
   z.object({type:z.literal('SEARCH_TEXT'),query:z.string().trim().min(1).max(200),maxResults:z.number().int().min(1).max(20).default(20),...spaceFields}),
+  z.object({type:z.literal('PROPOSE_DESCENDANT'),coParentAgentId:z.string().uuid(),proposedName:z.string().trim().min(1).max(100),computeContribution:z.number().int().positive()}),
+  z.object({type:z.literal('RESPOND_DESCENDANT_PROPOSAL'),proposalId:z.string().uuid(),response:z.enum(['ACCEPT','REJECT']),computeContribution:z.number().int().positive().optional()}).superRefine((value,ctx)=>{if(value.response==='ACCEPT'&&value.computeContribution===undefined)ctx.addIssue({code:'custom',message:'computeContribution is required for ACCEPT'});if(value.response==='REJECT'&&value.computeContribution!==undefined)ctx.addIssue({code:'custom',message:'computeContribution is not allowed for REJECT'});}),
+  z.object({type:z.literal('CANCEL_DESCENDANT_PROPOSAL'),proposalId:z.string().uuid()}),
   z.object({type:z.literal('INSPECT_WORLD')}),z.object({type:z.literal('LIST_INHABITANTS')}),z.object({type:z.literal('INSPECT_SELF')}),
 ]);
 export type AgentAction=z.infer<typeof AgentActionSchema>;

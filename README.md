@@ -1,6 +1,6 @@
 # Autonomous AI World
 
-A local-first, persistent world kernel inhabited by exactly Mam and Toey. The world supplies capabilities, causal constraints, finite resources, and audit history. It supplies no professions, goals, quests, economy, civilization stages, or scripted conversations.
+A local-first, persistent world kernel with Mam and Toey as its stable founders. The world supplies capabilities, causal constraints, finite resources, and audit history. It supplies no professions, goals, quests, economy, civilization stages, population targets, or scripted conversations.
 
 ## Setup
 
@@ -36,6 +36,8 @@ pnpm world runs
 pnpm world run-report <run-id>
 pnpm world experiment-report <run-id-or-label>
 pnpm world agents
+pnpm world debug descendant-proposals
+pnpm world debug lineage <agent-id-or-name>
 pnpm world inspect Mam
 pnpm world memories Mam --query "python error"
 pnpm world messages Mam
@@ -54,6 +56,12 @@ pnpm world run --ticks 5 --live
 ```
 
 A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
+
+## Descendants
+
+`PROPOSE_DESCENDANT`, `RESPOND_DESCENDANT_PROPOSAL`, and `CANCEL_DESCENDANT_PROPOSAL` expose a neutral two-parent capability. A proposal reserves the proposer's stated compute; rejection or cancellation releases that reservation. Acceptance atomically consumes both contributions, consumes `DESCENDANT_CREATION_OVERHEAD`, and gives the remainder to a new autonomous inhabitant. Defaults are a minimum 250 compute per parent, 1,000 initial child compute after 100 overhead, and a ceiling of 50 active inhabitants. Configure these laws with `DESCENDANT_MIN_PARENT_CONTRIBUTION`, `DESCENDANT_MIN_INITIAL_COMPUTE`, `DESCENDANT_CREATION_OVERHEAD`, and `WORLD_MAX_ACTIVE_INHABITANTS`.
+
+Proposal details and lineage are private to the involved inhabitants and Owner/kernel diagnostics. Public presence and birth consequences expose only UUID, name, generation, and status. Newborn workspaces, memories, messages, executions, and private tools start empty; existing shared culture remains available normally. A child created during tick N becomes cognition-eligible at tick N+1. The current SQLite identity schema requires case-insensitive unique inhabitant names, so names are labels but duplicate labels are rejected explicitly; UUIDs remain canonical in proposal and lineage operations.
 
 The CLI loads ignored local `.env` configuration when present. Live cognition supports the intended `COGNITION_PROVIDER=openrouter` configuration and an independent optional `openai` configuration through one provider-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
 

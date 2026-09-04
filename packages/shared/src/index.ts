@@ -22,8 +22,12 @@ You are not assigned a profession or predetermined purpose.
 Actions have consequences and may consume resources.`;
 
 export interface WorldRecord { id:string; createdAt:string; currentTick:number; simulatedTime:string; status:'paused'|'running'; }
-export interface AgentRecord { id:string; name:string; createdAt:string; generation:number; parentIds:string[]; status:'active'|'inactive'; cognitionConfig:Record<string,unknown>; capabilities:string[]; metadata:Record<string,unknown>; computeCredits:number; storageBytes:number; sleepingUntilTick:number; }
+export interface AgentRecord { id:string; name:string; createdAt:string; generation:number; parentIds:string[]; status:'active'|'inactive'; cognitionConfig:Record<string,unknown>; capabilities:string[]; metadata:Record<string,unknown>; computeCredits:number; storageBytes:number; sleepingUntilTick:number; eligibleFromTick:number; }
 export interface PublicInhabitant { id:string; name:string; generation:number; status:AgentRecord['status']; }
+export type DescendantProposalStatus='PENDING'|'REJECTED'|'CANCELLED'|'COMPLETED';
+export interface DescendantProposalRecord { id:string; proposerAgentId:string; coParentAgentId:string; proposedName:string; proposerComputeContribution:number; status:DescendantProposalStatus; createdTick:number; respondedTick:number|null; createdAt:string; respondedAt:string|null; childAgentId:string|null; }
+export interface ComputeReservationRecord { proposalId:string; agentId:string; amount:number; status:'RESERVED'|'RELEASED'|'CONSUMED'; createdAt:string; resolvedAt:string|null; }
+export interface LineageRecord { childAgentId:string; parentAAgentId:string; parentBAgentId:string; proposalId:string; birthTick:number; }
 export interface MessageRecord { id:string; fromId:string; fromType:'agent'|'owner'; toAgentId:string; createdAt:string; tick:number; content:string; readAt:string|null; }
 export type MemoryKind='episodic'|'knowledge'|'reflection';
 export type MemoryRetrievalStatus='ACTIVE'|'QUARANTINED';
@@ -38,7 +42,8 @@ const AGENT_VISIBLE_EVENT_TYPES=new Set([
   'ACTION_FAILED','ACTION_RESULT','AGENT_WAITED','DIRECTORY_CREATED','FILE_CREATED','FILE_READ','FILE_UPDATED',
   'MESSAGE_SENT','OWNER_MESSAGE_QUEUED','PROGRAM_EXECUTION_COMPLETED','PROGRAM_EXECUTION_FAILED','PROGRAM_EXECUTION_STARTED',
   'SANDBOX_LIMIT_EXCEEDED','SECURITY_VIOLATION','TEXT_SEARCH_COMPLETED','TOOL_INSPECTED','TOOL_INVOCATION_COMPLETED',
-  'TOOL_INVOCATION_FAILED','TOOL_INVOKED','TOOL_PUBLISHED','TOOL_VERSION_PUBLISHED',
+  'TOOL_INVOCATION_FAILED','TOOL_INVOKED','TOOL_PUBLISHED','TOOL_VERSION_PUBLISHED','DESCENDANT_PROPOSAL_CREATED',
+  'DESCENDANT_PROPOSAL_REJECTED','DESCENDANT_PROPOSAL_CANCELLED','DESCENDANT_PROPOSAL_ACCEPTED','DESCENDANT_CREATED',
 ]);
 export function eventVisibility(event:Pick<WorldEventRecord,'type'|'payload'>):EventVisibility{
   if(event.payload.infrastructureFailure===true)return'OWNER_KERNEL_ONLY';
@@ -55,7 +60,7 @@ export interface RunPreflightSnapshot{capturedAt:string;startTick:number;worldSt
 export interface AutonomyRunRecord{id:string;label:string|null;startedAt:string;endedAt:string|null;startTick:number;endTick:number|null;startEventId:number;endEventId:number|null;provider:string;modelIdentifier:string|null;preflight:RunPreflightSnapshot|null;postflight:RunPreflightSnapshot|null;initialCompute:number;endingCompute:number|null;computeCeiling:number|null;tickLimit:number|null;cognitionTurnLimit:number|null;inputTokenLimit:number|null;outputTokenLimit:number|null;executionLimit:number|null;wallClockLimitMs:number|null;terminationReason:string|null;}
 export interface CheckpointRecord{id:string;label:string;createdAt:string;tick:number;databaseHash:string;artifactHash:string;backupPath:string;}
 
-export const CAPABILITIES=['WAIT','SEND_MESSAGE','CREATE_TEXT_FILE','READ_FILE','LIST_FILES','WRITE_FILE','APPEND_FILE','CREATE_DIRECTORY','INSPECT_WORLD','LIST_INHABITANTS','INSPECT_SELF','EXECUTE_PROGRAM','PUBLISH_TOOL','INVOKE_TOOL','LIST_TOOLS','INSPECT_TOOL','SEARCH_TEXT'] as const;
+export const CAPABILITIES=['WAIT','SEND_MESSAGE','CREATE_TEXT_FILE','READ_FILE','LIST_FILES','WRITE_FILE','APPEND_FILE','CREATE_DIRECTORY','INSPECT_WORLD','LIST_INHABITANTS','INSPECT_SELF','EXECUTE_PROGRAM','PUBLISH_TOOL','INVOKE_TOOL','LIST_TOOLS','INSPECT_TOOL','SEARCH_TEXT','PROPOSE_DESCENDANT','RESPOND_DESCENDANT_PROPOSAL','CANCEL_DESCENDANT_PROPOSAL'] as const;
 export const CAPABILITY_DESCRIPTIONS:CapabilityDescription[]=[
   {type:'WAIT',description:'Take no world action and optionally sleep for future ticks.',schema:{ticks:'integer 1..100, optional'},constraints:['A direct message wakes the recipient.']},
   {type:'SEND_MESSAGE',description:'Persist a message to an inhabitant name/id or owner:external.',schema:{to:'string',content:'string'},constraints:['Maximum message size applies.','Owner delivery is quota-controlled.']},
@@ -74,4 +79,7 @@ export const CAPABILITY_DESCRIPTIONS:CapabilityDescription[]=[
   {type:'LIST_TOOLS',description:'List accessible private and shared userland tools.',schema:{},constraints:['Private tools remain publisher-only.']},
   {type:'INSPECT_TOOL',description:'Inspect an accessible tool manifest and provenance.',schema:{toolVersionId:'string'},constraints:[]},
   {type:'SEARCH_TEXT',description:'Search bounded authorized textual artifacts.',schema:{space:'PRIVATE|SHARED',query:'string',maxResults:'integer 1..20'},constraints:['No global or semantic omniscience.','Only authorized text files are searched.']},
+  {type:'PROPOSE_DESCENDANT',description:'Offer an active inhabitant joint creation of a new autonomous inhabitant.',schema:{coParentAgentId:'UUID',proposedName:'label',computeContribution:'positive integer'},constraints:['The recipient decides; contribution is reserved.','No behavioral instructions.']},
+  {type:'RESPOND_DESCENDANT_PROPOSAL',description:'Accept or reject a proposal addressed to you.',schema:{proposalId:'UUID',response:'ACCEPT|REJECT',computeContribution:'required positive integer for ACCEPT'},constraints:['Consent covers the exact name and resources.']},
+  {type:'CANCEL_DESCENDANT_PROPOSAL',description:'Cancel your pending proposal.',schema:{proposalId:'UUID'},constraints:['Releases the reservation and informs the recipient.']},
 ];
