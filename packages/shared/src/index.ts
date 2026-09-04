@@ -26,12 +26,24 @@ export interface AgentRecord { id:string; name:string; createdAt:string; generat
 export interface PublicInhabitant { id:string; name:string; generation:number; status:AgentRecord['status']; }
 export interface MessageRecord { id:string; fromId:string; fromType:'agent'|'owner'; toAgentId:string; createdAt:string; tick:number; content:string; readAt:string|null; }
 export type MemoryKind='episodic'|'knowledge'|'reflection';
-export interface MemoryRecord { id:string; agentId:string; kind:MemoryKind; content:string; createdAt:string; tick:number; salience:number; sourceEventId:number|null; tags:string[]; occurrences:number; }
+export type MemoryRetrievalStatus='ACTIVE'|'QUARANTINED';
+export interface MemoryRecord { id:string; agentId:string; kind:MemoryKind; content:string; createdAt:string; tick:number; salience:number; sourceEventId:number|null; sourceRunId:string|null; retrievalStatus:MemoryRetrievalStatus; tags:string[]; occurrences:number; }
 export interface ExecutionResult { success:boolean; exitCode:number|null; stdout:string; stderr:string; timedOut:boolean; durationMs:number; truncated:boolean; error?:string; }
 export interface ExecutionRecord extends ExecutionResult { id:string; agentId:string; tick:number; runtime:'node'|'python'; entrypoint:string; args:string[]; createdAt:string; }
 export type DeliveryStatus='pending'|'delivered'|'failed'|'retrying';
 export interface OwnerOutboxRecord { id:string; agentId:string; agentName:string; tick:number; createdAt:string; content:string; status:DeliveryStatus; attempts:number; lastError:string|null; deliveredAt:string|null; }
 export interface WorldEventRecord { id:number; eventUid:string; tick:number; timestamp:string; type:string; actorId:string|null; subjectId:string|null; payload:Record<string,unknown>; }
+export type EventVisibility='AGENT_VISIBLE'|'OWNER_KERNEL_ONLY';
+const AGENT_VISIBLE_EVENT_TYPES=new Set([
+  'ACTION_FAILED','ACTION_RESULT','AGENT_WAITED','DIRECTORY_CREATED','FILE_CREATED','FILE_READ','FILE_UPDATED',
+  'MESSAGE_SENT','OWNER_MESSAGE_QUEUED','PROGRAM_EXECUTION_COMPLETED','PROGRAM_EXECUTION_FAILED','PROGRAM_EXECUTION_STARTED',
+  'SANDBOX_LIMIT_EXCEEDED','SECURITY_VIOLATION','TEXT_SEARCH_COMPLETED','TOOL_INSPECTED','TOOL_INVOCATION_COMPLETED',
+  'TOOL_INVOCATION_FAILED','TOOL_INVOKED','TOOL_PUBLISHED','TOOL_VERSION_PUBLISHED',
+]);
+export function eventVisibility(event:Pick<WorldEventRecord,'type'|'payload'>):EventVisibility{
+  if(event.payload.infrastructureFailure===true)return'OWNER_KERNEL_ONLY';
+  return AGENT_VISIBLE_EVENT_TYPES.has(event.type)?'AGENT_VISIBLE':'OWNER_KERNEL_ONLY';
+}
 export interface CapabilityDescription { type:string; description:string; schema:Record<string,string>; constraints:string[]; }
 export type ToolVisibility='PRIVATE'|'SHARED';
 export interface PublishedToolVersion{ id:string;toolId:string;version:number;publisherAgentId:string;publisherName:string;publishedAt:string;tick:number;visibility:ToolVisibility;runtime:'node'|'python';entrypoint:string;sourceHash:string;manifest:ToolManifest;previousVersionId:string|null; }

@@ -14,6 +14,8 @@
 - Links, junctions, reparse traversal, absolute paths, traversal paths, and redirections are forbidden.
 - Writes stage, flush, and rename before accounting and event publication.
 - Interrupted file mutations are reconciled by durable before/after hashes; one committed mutation yields one quota delta, revision, and event.
+- Immutable audit events cross into inhabitant cognition only through the explicit agent-visible event policy; kernel and Owner operations are private by default.
+- Every active inhabitant has a minimal public presence consisting only of id, name, generation, and status.
 - Code executes only in permitted isolated containers, never through host `eval` or a host shell.
 - Execution has no network and finite time, CPU, memory, processes, input, output, and compute cost.
 - Userland tools are immutable versioned world content, not kernel permissions. They run with the same sandbox and bounded JSON stdin.
