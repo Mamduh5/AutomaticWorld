@@ -1,12 +1,17 @@
 import { z } from 'zod';
-import type { AgentRecord, CapabilityDescription, ExecutionRecord, MemoryRecord, MessageRecord, ToolSummary } from '../../shared/src/index.js';
+import { BOOTSTRAP_INSTRUCTION,type AgentRecord, type CapabilityDescription, type ExecutionRecord, type MemoryRecord, type MessageRecord, type ToolSummary, type WorldRecord } from '../../shared/src/index.js';
 import { AgentActionSchema, type AgentAction } from '../../tools/src/actions.js';
 
-export interface Observation{tick:number;self:AgentRecord;nearbyOrRelevantEvents:{type:string;tick:number;summary:Record<string,unknown>}[];privateArtifacts:string[];sharedArtifacts:string[];receivedMessages:MessageRecord[];recentExecutions:ExecutionRecord[];accessibleResources:{computeCredits:number;storageBytes:number};kernelCapabilities:CapabilityDescription[];userlandTools:ToolSummary[];availableCapabilities:CapabilityDescription[];}
-export interface CognitionInput{identity:{id:string;name:string;bootstrapInstruction:string};currentObservation:Observation;relevantMemories:MemoryRecord[];availableActions:CapabilityDescription[];currentResources:{computeCredits:number;storageBytes:number};recentMessages:MessageRecord[];}
+export interface ObservedEvent{id:number;type:string;tick:number;actorId:string|null;subjectId:string|null;delivery:'NEW_ACTION_RESULT'|'NEW_OWN_CONSEQUENCE'|'NEW_SHARED_CONSEQUENCE'|'CONTINUITY';summary:Record<string,unknown>;}
+export interface ObservationDelivery{newObservationEventIds:number[];newMessageIds:string[];actionResultIds:number[];sharedConsequenceIds:number[];continuityEventIds:number[];truncations:string[];}
+export interface Observation{tick:number;world:{status:WorldRecord['status'];populationCount:number;simulatedTime:string};self:AgentRecord;nearbyOrRelevantEvents:ObservedEvent[];privateArtifacts:string[];sharedArtifacts:string[];newlyDeliveredMessages:MessageRecord[];recentExecutions:ExecutionRecord[];accessibleResources:{computeCredits:number;storageBytes:number};kernelCapabilities:CapabilityDescription[];userlandTools:ToolSummary[];contextDelivery:ObservationDelivery;}
+export interface CognitionInput{identity:{id:string;name:string;bootstrapInstruction:string};currentObservation:Observation;relevantMemories:MemoryRecord[];availableActions:CapabilityDescription[];}
 export interface CognitionOutput{thoughtSummary:string;selectedAction:AgentAction;reasoningMetadata?:Record<string,unknown>|undefined;}
 export interface CognitionProvider{think(input:CognitionInput):Promise<CognitionOutput>;}
 export interface ProviderFailureDetails{httpStatus?:number;code?:string|number;type?:string;message:string;responseBodyJson?:boolean;}
+export const COGNITION_RESPONSE_INSTRUCTION='Return only JSON matching {thoughtSummary, selectedAction}. Do not include hidden reasoning.';
+export const estimateContextTokens=(value:unknown):number=>Math.ceil(Buffer.byteLength(typeof value==='string'?value:JSON.stringify(value),'utf8')/3);
+export const cognitionUserPayload=(input:CognitionInput)=>({...input,identity:{id:input.identity.id,name:input.identity.name}});
 
 export class DeterministicCognitionProvider implements CognitionProvider{
   constructor(private readonly actions:AgentAction[]|((input:CognitionInput)=>AgentAction)=[{type:'WAIT',ticks:1}]){}
@@ -41,7 +46,7 @@ export class OpenAICompatibleCognitionProvider implements CognitionProvider{
       attempts=attempt+1;
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),this.timeoutMs);
       try{
-        const response=await this.fetcher(`${this.baseUrl}/chat/completions`,{method:'POST',redirect:'error',signal:controller.signal,headers:this.headers(true),body:JSON.stringify({model:this.model,response_format:{type:'json_object'},messages:[{role:'system',content:`${input.identity.bootstrapInstruction}\nReturn only JSON matching {thoughtSummary, selectedAction}. Do not include hidden reasoning.`},{role:'user',content:JSON.stringify(input)}]})});
+        const response=await this.fetcher(`${this.baseUrl}/chat/completions`,{method:'POST',redirect:'error',signal:controller.signal,headers:this.headers(true),body:JSON.stringify({model:this.model,response_format:{type:'json_object'},messages:[{role:'system',content:`${BOOTSTRAP_INSTRUCTION}\n${COGNITION_RESPONSE_INSTRUCTION}`},{role:'user',content:JSON.stringify(cognitionUserPayload(input))}]})});
         if(!response.ok)throw await providerHttpError(response);const raw=await response.text();if(Buffer.byteLength(raw)>this.maxOutputBytes)throw new Error('Provider response exceeded output limit');const body=JSON.parse(raw) as any,content=body?.choices?.[0]?.message?.content;if(typeof content!=='string'||content.length===0)throw new Error('Provider returned empty output');if(Buffer.byteLength(content)>this.maxOutputBytes)throw new Error('Provider action output exceeded limit');const parsed=OutputSchema.parse(JSON.parse(content)),usage=body.usage??null,inputTokens=Number(usage?.prompt_tokens??usage?.input_tokens??0),outputTokens=Number(usage?.completion_tokens??usage?.output_tokens??0);return{thoughtSummary:parsed.thoughtSummary,selectedAction:parsed.selectedAction,reasoningMetadata:{usage,inputTokens:Number.isFinite(inputTokens)?inputTokens:0,outputTokens:Number.isFinite(outputTokens)?outputTokens:0,providerLatencyMs:Date.now()-started,providerRequestSucceeded:true,providerAttempts:attempt+1}};
       }catch(error){clearTimeout(timer);lastError=sanitizeCognitionProviderError(error);lastFailure=error instanceof ProviderHttpError?error.details:undefined;if(attempt>=this.maxRetries||!retryableProviderError(error))break;await retryDelay(error instanceof ProviderHttpError?error.retryInMs??Math.min(100*2**attempt,1_000):Math.min(100*2**attempt,1_000));}finally{clearTimeout(timer);}
     }
