@@ -200,6 +200,8 @@ pnpm.cmd world status
 pnpm.cmd world checkpoint create <safe-label>
 pnpm.cmd world checkpoint list
 pnpm.cmd world experiment --live --label <safe-label> --ticks 5 --max-cognition-turns 10 --max-input-tokens 50000 --max-output-tokens 10000 --compute-ceiling 250 --execution-limit 5 --wall-ms 300000
+pnpm.cmd world experiment --ticks 500 --profile long --show-limits
+pnpm.cmd world experiment --live --ticks 500 --profile long
 pnpm.cmd world runs
 pnpm.cmd world run-report <run-id-or-label>
 pnpm.cmd world activity --last 50
@@ -211,7 +213,7 @@ pnpm.cmd world doctor
 pnpm.cmd world doctor --live
 ```
 
-`checkpoint list` is the available checkpoint inspection command. `resume` only changes persisted status; it does not start a runner. The `experiment --live` command is the explicit cognition boundary.
+`checkpoint list` is the available checkpoint inspection command. `resume` only changes persisted status; it does not start a runner. The `experiment --live` command is the explicit cognition boundary. The default profile retains conservative ceilings; `--profile long` is an explicit Owner choice for a long observation and does not replenish inhabitants or enlarge per-turn cognition context.
 
 ## J. Safe numbered migration sequence
 

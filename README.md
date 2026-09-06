@@ -33,7 +33,9 @@ pnpm world run --ticks 10
 pnpm world run --continuous --tick-ms 5000
 pnpm world run --continuous --ticks 100 --compute-ceiling 1000
 pnpm world checkpoint create genesis-live-001-before
-pnpm world experiment --live --label genesis-live-001 --ticks 25 --max-cognition-turns 50 --max-input-tokens 250000 --max-output-tokens 50000 --compute-ceiling 1000 --execution-limit 20 --wall-ms 900000
+pnpm world experiment --live --label genesis-live-001 --ticks 25
+pnpm world experiment --ticks 500 --profile long --show-limits
+pnpm world experiment --live --ticks 500 --profile long
 pnpm world runs
 pnpm world run-report <run-id>
 pnpm world experiment-report <run-id-or-label>
@@ -60,6 +62,46 @@ pnpm world run --ticks 5 --live
 ```
 
 A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
+
+## Observation experiments
+
+Normal observation keeps the conservative default experiment ceilings:
+
+```powershell
+npm.cmd run world -- experiment --live --ticks 20
+```
+
+The default profile uses a 1,000 compute-expenditure ceiling, two cognition turns per requested tick, 250,000 input tokens, 50,000 output tokens, 20 executions, and 900,000 ms wall time. These are aggregate run ceilings. `--ticks` independently specifies the maximum attempted world-tick advancement.
+
+For a deliberately long observation, select the long profile explicitly:
+
+```powershell
+npm.cmd run world -- experiment --live --ticks 500 --profile long
+```
+
+For 500 ticks this resolves to 20,000 compute, 5,000 cognition turns, 10,000,000 input tokens, 500,000 output tokens, 1,000 executions, and 10,800,000 ms wall time. The CLI prints these effective values before acquiring the runner lease. Preview them without a lease, cognition, tick advancement, or compute use with:
+
+```powershell
+npm.cmd run world -- experiment --ticks 500 --profile long --show-limits
+```
+
+Explicit `--max-input-tokens`, `--max-output-tokens`, `--max-compute`, `--max-cognition-turns`, `--max-executions`, and `--max-wall-clock-ms` values override the selected profile. The compatibility names `--compute-ceiling`, `--execution-limit`, and `--wall-ms` remain accepted. Every limit must be a positive safe integer.
+
+The long profile may consume substantial provider inference and inhabitant compute. It does not mint or replenish inhabitant compute, enlarge the per-turn `COGNITION_INPUT_BUDGET_TOKENS=8000`, change `WAIT`, alter descendant laws, or weaken sandbox/security checks. Runs can still stop because inhabitants exhaust their resources, the world is paused, provider service or account limits intervene, the circuit breaker opens, or another configured ceiling is reached. AutomaticWorld ceilings are separate from OpenRouter/provider rate limits, availability, and account quotas; selecting `long` cannot guarantee continuous provider service.
+
+Aggregate token ceilings are checked after a complete world-tick scheduling boundary. All completed provider usage remains factual, so the final tick can overshoot a token ceiling by the completed cognition calls in that boundary; counters are not reset and completed responses are not discarded.
+
+Inspect a run and current operations with:
+
+```powershell
+npm.cmd run world -- run-report <RUN_ID>
+npm.cmd run world -- activity --last 200
+npm.cmd run world -- status
+npm.cmd run world -- debug runner-lease
+npm.cmd run world -- debug descendant-proposals
+```
+
+Run reports persist the exact effective tick, cognition-turn, input-token, output-token, compute, execution, and wall-clock ceilings used.
 
 ## Descendants
 

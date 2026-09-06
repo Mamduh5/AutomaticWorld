@@ -7,12 +7,14 @@ Live trials observe existing Mam and Toey without assigning work, changing the f
 1. While paused, run `pnpm world checkpoint create <label>`.
 2. Run the deterministic gate with `pnpm check`.
 3. Resume the world, then run `pnpm world doctor --live`.
-4. Start an explicitly bounded trial with `pnpm world experiment --live --label <label> --ticks <n>` plus cognition-turn, input-token, output-token, compute, execution, and wall-clock limits.
+4. Start an explicitly bounded trial with `pnpm world experiment --live --label <label> --ticks <n>`. This uses the conservative default profile. Select `--profile long` only for a deliberate long observation, or supply explicit cognition-turn, input-token, output-token, compute, execution, and wall-clock overrides.
 5. Inspect `pnpm world run-report <label>` and `pnpm world experiment-report <label>`.
 6. Pause if no further run is intended and verify doctor/integrity state after restart.
 
 The live doctor verifies the database, exact founder identities, population, running state, lease, Docker isolation, runtime image identity, compute, storage, reconciliation, tool-store integrity, secret isolation, provider selection/configuration/authentication connectivity, and configured Owner transports. Its authenticated readiness request consumes no inference tokens and does not establish that the account has usable inference credit. LINE is optional for cognition readiness; a partial LINE deployment is reported as a warning.
 
 Every run stores factual preflight and postflight snapshots. Action attribution records run ID, tick, agent, action type, result, safe action metadata, provider usage, and latency. It does not store hidden reasoning. The stagnation report counts wait-only sequences, repeated action types, repeated/consolidated memories, and turns without artifact changes; it never changes behavior.
+
+Experiment token ceilings are aggregate AutomaticWorld accounting limits, distinct from the fixed per-cognition context budget and from provider rate limits, availability, or account quotas. Limits are evaluated after a complete world-tick scheduling boundary. Consequently, a completed boundary may produce bounded overshoot equal to the provider usage of the cognition calls completed in that boundary; usage is never reset, hidden, or discarded. The existing retry, fallback, and circuit-breaker behavior remains in force under every profile.
 
 Checkpoints are disaster recovery references, not alternate worlds or automatic rollback. Only the Owner CLI can create one, and restoration remains an explicit future operation. Inhabitant mistakes are not a restoration reason.
