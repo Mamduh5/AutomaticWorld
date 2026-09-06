@@ -61,7 +61,7 @@ pnpm world gateway line-listen --port 8787
 pnpm world run --ticks 5 --live
 ```
 
-A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease, completes an in-flight tick on Ctrl+C, persists the tick, releases the lease, and exits.
+A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease. At an ordinary in-flight cognition/action boundary, Ctrl+C finishes the safe boundary before releasing the lease. During a long-profile provider cooldown it instead stops future retries immediately, preserves the unfinished tick journal, releases the lease, and exits without advancing the tick.
 
 ## Observation experiments
 
@@ -89,6 +89,10 @@ Explicit `--max-input-tokens`, `--max-output-tokens`, `--max-compute`, `--max-co
 
 The long profile may consume substantial provider inference and inhabitant compute. It does not mint or replenish inhabitant compute, enlarge the per-turn `COGNITION_INPUT_BUDGET_TOKENS=8000`, change `WAIT`, alter descendant laws, or weaken sandbox/security checks. Runs can still stop because inhabitants exhaust their resources, the world is paused, provider service or account limits intervene, the circuit breaker opens, or another configured ceiling is reached. AutomaticWorld ceilings are separate from OpenRouter/provider rate limits, availability, and account quotas; selecting `long` cannot guarantee continuous provider service.
 
+For the long profile only, a retryable provider HTTP 429 suspends the pending tick instead of becoming an inhabitant turn. World time, the pending inhabitant's observation cursor, compute, sleep state, memory, and actions stay unchanged. The runner establishes a provider/model-scoped cooldown, waits in real time, and retries the same persisted cognition boundary before considering the next inhabitant. The fallback schedule is 2, 4, 8, 16, 32, then 60 seconds repeatedly, with a 30-minute maximum suspension. A valid `Retry-After` is honored up to 30 minutes. Cooldown time counts toward the run wall-clock ceiling. The default profile retains the existing bounded provider retry, kernel fallback, and infrastructure-breaker behavior, so short runs do not wait through this long cooldown policy.
+
+Partial-tick scheduling progress is durable in `world.sqlite`: the eligible-agent snapshot, completed inhabitants, pending inhabitant, and bounded prepared cognition context survive Ctrl+C, process failure, and runner restart. A successful inhabitant is not scheduled a second time merely because a later inhabitant was rate limited. `TICK_COMPLETED` is emitted only after every scheduled inhabitant reaches its real normal boundary. If the 30-minute suspension expires, the run stops with `provider rate-limit suspension exhausted`; the pending tick remains resumable. A later long-profile run using the same provider/model scope resumes it automatically.
+
 Aggregate token ceilings are checked after a complete world-tick scheduling boundary. All completed provider usage remains factual, so the final tick can overshoot a token ceiling by the completed cognition calls in that boundary; counters are not reset and completed responses are not discarded.
 
 Inspect a run and current operations with:
@@ -98,10 +102,11 @@ npm.cmd run world -- run-report <RUN_ID>
 npm.cmd run world -- activity --last 200
 npm.cmd run world -- status
 npm.cmd run world -- debug runner-lease
+npm.cmd run world -- debug provider-cooldown
 npm.cmd run world -- debug descendant-proposals
 ```
 
-Run reports persist the exact effective tick, cognition-turn, input-token, output-token, compute, execution, and wall-clock ceilings used.
+`debug provider-cooldown` is read-only and reports the world tick separately from pending tick progress, the provider/model scope, completed and pending inhabitants, next retry, attempts, and elapsed suspension without exposing the persisted cognition payload. Run reports persist the exact effective ceilings and add factual rate-limit suspension, retry, elapsed-time, and recovery counts.
 
 ## Descendants
 

@@ -13,6 +13,7 @@ export interface ExperimentLimits{
 
 export const DEFAULT_EXPERIMENT_CEILINGS={computeCeiling:1_000,maxInputTokens:250_000,maxOutputTokens:50_000,executionLimit:20,wallClockLimitMs:15*60_000} as const;
 export const LONG_EXPERIMENT_CEILINGS={computeCeiling:20_000,maxCognitionTurns:5_000,maxInputTokens:10_000_000,maxOutputTokens:500_000,executionLimit:1_000,wallClockLimitMs:3*60*60_000} as const;
+export const LONG_RATE_LIMIT_SUSPENSION={initialBackoffMs:2_000,maxBackoffMs:60_000,maxSuspensionMs:30*60_000,retryAfterMaxMs:30*60_000} as const;
 
 const positiveSafeInteger=(name:string,value:unknown):number=>{const parsed=typeof value==='number'?value:Number(value);if(!Number.isSafeInteger(parsed)||parsed<=0)throw new Error(`${name} must be a positive safe integer`);return parsed;};
 const valueAfter=(args:string[],name:string):string|undefined=>{const indexes=args.flatMap((item,index)=>item===name?[index]:[]);if(indexes.length>1)throw new Error(`${name} may be provided only once`);if(indexes.length===0)return undefined;const value=args[indexes[0]!+1];if(value===undefined||value.startsWith('--'))throw new Error(`${name} requires a value`);return value;};

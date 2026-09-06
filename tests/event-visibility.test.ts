@@ -40,6 +40,7 @@ describe('event visibility boundary',()=>{
 });
 
 describe('memory provenance boundary',()=>{
+  it('keeps provider cooldown operations Owner/kernel-only',()=>{for(const type of ['PROVIDER_COOLDOWN_STARTED','PROVIDER_COOLDOWN_RETRY','PROVIDER_COOLDOWN_RECOVERED','PROVIDER_COOLDOWN_ABORTED'])expect(eventVisibility({type,payload:{}})).toBe('OWNER_KERNEL_ONLY');});
   it('rejects kernel event sources and excludes quarantined records from retrieval',async()=>{
     const e=await engine(),mam=e.repo.getAgent('Mam')!,kernel=e.repo.addEvent('COGNITION_PROVIDER_ERROR',0,mam.id,null,{error:'Provider HTTP 402'}),visible=e.repo.addEvent('PROGRAM_EXECUTION_FAILED',0,mam.id,null,{exitCode:1,stderr:'SyntaxError'});
     expect(()=>e.repo.addMemory(mam.id,'reflection','kernel autobiography',0,{sourceEventId:kernel.id})).toThrow(/Kernel-only/);
