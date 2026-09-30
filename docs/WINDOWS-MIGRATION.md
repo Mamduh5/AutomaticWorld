@@ -16,6 +16,7 @@ source code / Git repository
 - The Git repository is source and documentation. It is regenerable by cloning the same revision.
 - The directory selected by `WORLD_DATA_DIR` is mandatory. Its default is `world-data/`. Copy the whole directory, including `world.sqlite`, `agents/`, `shared/`, and `system/`. The database contains identity, ticks, resources, messages, memories, tools, proposals, lineage, cursors, events, run records, and any pending partial-tick/provider-cooldown scheduler journal; the subdirectories contain real workspaces, shared artifacts, and immutable userland tool snapshots.
 - `.env` is mandatory when the installation uses live cognition, email, LINE, a non-default state path, or non-default laws. It is local secret/configuration, is ignored by Git, and must never be committed.
+- For OpenCode Zen, move `OPENCODE_ZEN_API_KEY` securely with `.env` and confirm `COGNITION_PROVIDER=opencode-zen` and `OPENCODE_ZEN_MODEL=space-bunny-free` on the destination. Never place `.env` in Git, `WORLD_DATA_DIR`, or checkpoint folders.
 - `${WORLD_DATA_DIR}-checkpoints/` is optional but strongly recommended. With the default state path this is `world-data-checkpoints/`. It contains recovery copies, not the active universe.
 - `node_modules/`, build caches, and Docker images are regenerable. Do not copy them as world state.
 
@@ -210,11 +211,13 @@ pnpm.cmd world debug descendant-proposals
 pnpm.cmd world debug lineage <agent-id-or-name>
 pnpm.cmd world debug runner-lease
 pnpm.cmd world debug provider-cooldown
+pnpm.cmd world pending-provider show
+pnpm.cmd world pending-provider migrate --provider opencode-zen --model space-bunny-free
 pnpm.cmd world doctor
 pnpm.cmd world doctor --live
 ```
 
-`checkpoint list` is the available checkpoint inspection command. `resume` only changes persisted status; it does not start a runner. The `experiment --live` command is the explicit cognition boundary. The default profile retains conservative ceilings; `--profile long` is an explicit Owner choice for a long observation and does not replenish inhabitants or enlarge per-turn cognition context. A long-profile HTTP 429 may leave a durable unfinished tick visible through `debug provider-cooldown`. That state already lives inside `world.sqlite`, so copying the complete `WORLD_DATA_DIR` includes it automatically; do not copy or edit a separate cooldown file. After migration, use the same provider/model scope and long command to resume. Ctrl+C during a cooldown preserves this journal and releases the lease without advancing the tick.
+`checkpoint list` is the available checkpoint inspection command. `resume` only changes persisted status; it does not start a runner. The `experiment --live` command is the explicit cognition boundary. The default profile retains conservative ceilings; `--profile long` is an explicit Owner choice for a long observation and does not replenish inhabitants or enlarge per-turn cognition context. A long-profile HTTP 429 may leave a durable unfinished tick visible through `debug provider-cooldown`. That state lives inside `world.sqlite`; copy the complete `WORLD_DATA_DIR`. The pending provider/model scope must match on the new PC. If the Owner deliberately changes provider, keep the world paused, run `doctor --live` for read-only connectivity/model visibility, inspect `pending-provider show`, and execute the explicit migration command. Verify the tick/resources/cursors before resuming. Ctrl+C during cooldown preserves the journal and releases the lease without advancing the tick.
 
 ## J. Safe numbered migration sequence
 

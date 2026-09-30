@@ -43,6 +43,8 @@ pnpm world agents
 pnpm world debug descendant-proposals
 pnpm world debug lineage <agent-id-or-name>
 pnpm world debug runner-lease
+pnpm world pending-provider show
+pnpm world pending-provider migrate --provider opencode-zen --model space-bunny-free
 pnpm world debug cognition-context <agent-id-or-name>
 pnpm world inspect Mam
 pnpm world memories Mam --query "python error"
@@ -114,7 +116,34 @@ npm.cmd run world -- debug descendant-proposals
 
 Proposal details and lineage are private to the involved inhabitants and Owner/kernel diagnostics. Public presence and birth consequences expose only UUID, name, generation, and status. Newborn workspaces, memories, messages, executions, and private tools start empty; existing shared culture remains available normally. A child created during tick N becomes cognition-eligible at tick N+1. The current SQLite identity schema requires case-insensitive unique inhabitant names, so names are labels but duplicate labels are rejected explicitly; UUIDs remain canonical in proposal and lineage operations.
 
-The CLI loads ignored local `.env` configuration when present. Live cognition supports the intended `COGNITION_PROVIDER=openrouter` configuration and an independent optional `openai` configuration through one provider-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
+The CLI loads ignored local `.env` configuration when present. Live cognition supports `openrouter`, `openai`, and `opencode-zen` through one OpenAI-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
+
+## OpenCode Zen and frozen tick-185 recovery
+
+OpenCode Zen uses `POST https://opencode.ai/zen/v1/chat/completions` with the exact model ID `space-bunny-free`. Configure `COGNITION_PROVIDER=opencode-zen`, `OPENCODE_ZEN_API_KEY=<secret>`, and `OPENCODE_ZEN_MODEL=space-bunny-free` in ignored local `.env`. `OPENCODE_ZEN_BASE_URL` defaults to `https://opencode.ai/zen/v1`. Keep `COGNITION_INPUT_BUDGET_TOKENS=8000`. The key stays in the Owner process environment, outside world data, prompts, Docker, reports, and checkpoints. Do not commit `.env` or copy it into Git, world data, or checkpoints.
+
+`space-bunny-free` is a limited-time, anonymous model. Its current free pricing does not promise permanent availability, identity, throughput, or quota. Zen also offers paid models and account auto-reload. Before live use, verify the exact configured model, account billing/auto-reload preferences, and any workspace monthly limits. AutomaticWorld does not change those external settings or fall back to a paid model. A removed model, invalid key, rate limit, or provider outage remains a visible failure; only the Owner can change the model. Returned token usage is counted even when monetary price is zero.
+
+The current tick-185 Mam context was frozen under OpenRouter. Changing `.env` alone does not change its scope. After the checkpoint, use this Owner sequence. `doctor --live` may report `World state: paused` until step 6; its Zen check is an authenticated GET to `/models` and performs no inference.
+
+```powershell
+# 1. Set the three Zen variables above in the ignored .env file; keep the world paused.
+npm.cmd run world -- doctor --live
+npm.cmd run world -- pending-provider show
+npm.cmd run world -- debug runner-lease
+# 2. Confirm tick 184, target tick 185, pending Mam, and no active lease.
+npm.cmd run world -- pending-provider migrate --provider opencode-zen --model space-bunny-free
+# 3. Verify target scope and unchanged tick, resources, and cursors before inference.
+npm.cmd run world -- pending-provider show
+npm.cmd run world -- status
+npm.cmd run world -- resume
+# 4. Owner's first live test: exactly one requested tick (Mam, then Toey).
+npm.cmd run world -- experiment --live --ticks 1 --profile long --label zen-t185-first
+# 5. After inspecting the run, the separate 500-tick experiment:
+npm.cmd run world -- experiment --live --ticks 500 --profile long --label zen-500
+```
+
+`pending-provider migrate` requires a durable frozen context, a healthy database, no active runner lease, complete target configuration, and a successful read-only provider check. It changes only scheduler routing and clears the old cooldown in one transaction. Its audit event is Owner-only. Repeating the same migration is a no-op. Compare `pending-provider show` before and after: `pendingContextSha256`, `agentState` resources/cursors, tick, agent order, and completed IDs must match; only routing and cooldown fields should change. The command reveals no frozen context content. The real tick-185 migration and live commands above are for the Owner to run manually.
 
 ## Execution
 
