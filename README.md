@@ -108,7 +108,7 @@ npm.cmd run world -- debug provider-cooldown
 npm.cmd run world -- debug descendant-proposals
 ```
 
-`debug provider-cooldown` is read-only and reports the world tick separately from pending tick progress, the provider/model scope, completed and pending inhabitants, next retry, attempts, and elapsed suspension without exposing the persisted cognition payload. Run reports persist the exact effective ceilings and add factual rate-limit suspension, retry, elapsed-time, and recovery counts.
+`debug provider-cooldown` is read-only and reports the world tick separately from pending tick progress, the provider/model scope, completed and pending inhabitants, safe suspension cause, next retry, attempts, and elapsed suspension without exposing the persisted cognition payload. Run reports retain 429-only rate-limit metrics and separately count all provider infrastructure suspensions, retries, elapsed time, recoveries, recorded HTTP attempts, short retries, and attempts whose provider usage is unknown. A reported zero for a failed request means usage was unavailable, not that the upstream used zero tokens.
 
 ## Descendants
 
@@ -121,6 +121,8 @@ The CLI loads ignored local `.env` configuration when present. Live cognition su
 ## OpenCode Zen and frozen tick-185 recovery
 
 OpenCode Zen uses `POST https://opencode.ai/zen/v1/chat/completions` with the exact model ID `space-bunny-free`. Configure `COGNITION_PROVIDER=opencode-zen`, `OPENCODE_ZEN_API_KEY=<secret>`, and `OPENCODE_ZEN_MODEL=space-bunny-free` in ignored local `.env`. `OPENCODE_ZEN_BASE_URL` defaults to `https://opencode.ai/zen/v1`. Keep `COGNITION_INPUT_BUDGET_TOKENS=8000`. The key stays in the Owner process environment, outside world data, prompts, Docker, reports, and checkpoints. Do not commit `.env` or copy it into Git, world data, or checkpoints.
+
+`OPENCODE_ZEN_REQUEST_TIMEOUT_MS` sets Zen's per-HTTP-attempt timeout (default 45,000 ms; allowed 1,000–120,000 ms). OpenRouter and direct OpenAI retain the shared 20,000 ms default. Each provider call still permits one short retry. The first long Space Bunny run had 637 successful turns with p95 latency 31.8 seconds and p99 37.7 seconds including retries, motivating the Zen-specific 45-second bound. Long-profile infrastructure suspension handles longer outages without extending one HTTP request indefinitely.
 
 `space-bunny-free` is a limited-time, anonymous model. Its current free pricing does not promise permanent availability, identity, throughput, or quota. Zen also offers paid models and account auto-reload. Before live use, verify the exact configured model, account billing/auto-reload preferences, and any workspace monthly limits. AutomaticWorld does not change those external settings or fall back to a paid model. A removed model, invalid key, rate limit, or provider outage remains a visible failure; only the Owner can change the model. Returned token usage is counted even when monetary price is zero.
 
