@@ -119,6 +119,7 @@ Proposal details and lineage are private to the involved inhabitants and Owner/k
 The CLI loads ignored local `.env` configuration when present. Live cognition supports `openrouter`, `openai`, and `opencode-zen` through one OpenAI-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
 
 Cognition gives new addressed messages and causal observations first. It also retains up to four recent peer messages involving the inhabitant in an 800 estimated-token conversation window, after those messages have been consumed. Own outbound messages qualify immediately; unseen inbound messages stay in the new-message path, and Owner or other agents' conversations never enter this window. The section yields to mandatory new observations under the unchanged per-turn budget. It is factual short-term context, separate from memory and task state; the kernel does not resolve contradictions.
+After that conversation window, cognition includes up to six already-observed own action results in chronological order, within a separate 800 estimated-token window. Each entry identifies the action, tick, success or failure, safe target, and compact result. File contents and execution output remain in their dedicated bounded sections; provider fallback does not count as an action. New action results keep priority and are never duplicated in this history on the same turn.
 
 ## OpenCode Zen and frozen tick-185 recovery
 

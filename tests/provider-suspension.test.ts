@@ -45,7 +45,10 @@ describe('long-profile provider infrastructure suspension',()=>{
   it('preserves a completed peer and frozen pending context through cancellation and restart',async()=>{
     const controller=new AbortController(),calls:string[]=[],contexts:string[]=[];
     const {engine,dir}=await setup({async think(input){calls.push(input.identity.name);if(input.identity.name==='Toey'){contexts.push(JSON.stringify(input));queueMicrotask(()=>controller.abort());return failure('timeout');}return success();}});
-    const mam=engine.repo.getAgent('Mam')!,toey=engine.repo.getAgent('Toey')!,prior=engine.repo.sendMessage(toey.id,'agent',mam.id,0,'Earlier peer note'),toeyBefore=state(engine,'Toey');
+    const mam=engine.repo.getAgent('Mam')!,toey=engine.repo.getAgent('Toey')!;
+    const priorAction=engine.repo.addEvent('ACTION_RESULT',0,toey.id,null,{actionType:'WAIT',actionId:'prior-intentional-wait',success:true,effects:[{waitedTicks:1,wakeTick:1}]});
+    const cursor=engine.repo.observationCursor(toey.id);expect(engine.repo.advanceObservationCursor(toey.id,{before:cursor,messageRowId:cursor.messageRowId,ownEventId:priorAction.id,sharedEventId:priorAction.id},0)).toBe(true);
+    const prior=engine.repo.sendMessage(toey.id,'agent',mam.id,0,'Earlier peer note'),toeyBefore=state(engine,'Toey');
     const first=await new ContinuousWorldRunner(engine).run({tickMs:0,maxTicks:1,provider:'opencode-zen',modelIdentifier:'space-bunny-free',rateLimitSuspension:policy,signal:controller.signal});
     expect(first).toMatchObject({ticks:0,reason:'shutdown signal'});expect(calls).toEqual(['Mam','Toey']);expect(engine.repo.getWorld()?.currentTick).toBe(0);expect(state(engine,'Toey')).toEqual(toeyBefore);
     expect(engine.repo.tickSchedule()).toMatchObject({state:'PAUSED',completedAgentIds:[mam.id],pendingAgentId:engine.repo.getAgent('Toey')!.id,suspensionCause:{phase:'timeout'}});
@@ -54,6 +57,7 @@ describe('long-profile provider infrastructure suspension',()=>{
     const second=await new ContinuousWorldRunner(resumed).run({tickMs:0,maxTicks:1,provider:'opencode-zen',modelIdentifier:'space-bunny-free',rateLimitSuspension:policy});
     expect(second.ticks).toBe(1);expect(resumedCalls).toEqual(['Toey']);expect(contexts[0]).toBe(contexts[1]);
     expect((JSON.parse(contexts[0]!) as CognitionInput).currentObservation.recentPeerConversation.map((message)=>message.id)).toContain(prior.id);
+    expect((JSON.parse(contexts[0]!) as CognitionInput).currentObservation.recentSelfActivity.map((activity)=>activity.actionId)).toContain('prior-intentional-wait');
     expect(runEvents(resumed,second.runId).find((event)=>event.type==='PROVIDER_COOLDOWN_RETRY')?.payload).toMatchObject({phase:'timeout',resumed:true});
     expect(resumed.repo.listEvents().filter((event)=>event.type==='AUTONOMY_ACTION'&&event.actorId===mam.id&&event.tick===1)).toHaveLength(1);
     expect(resumed.repo.listEvents().filter((event)=>event.type==='TICK_COMPLETED'&&event.tick===1)).toHaveLength(1);resumed.close();
