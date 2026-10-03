@@ -81,6 +81,8 @@ pnpm world gateway line-listen --port 8787
 pnpm world run --ticks 5 --live
 ```
 
+A deterministic local cognition-preparation fault stops the run, pauses the world at its unchanged committed tick, and records an Owner-only `COGNITION_LOCAL_ERROR`. It creates no fallback WAIT, consumes no observations or credit, and never enters provider cooldown or the infrastructure breaker. Any existing cognition hold/frozen context is retained for exactly-once recovery after correction and explicit resume. See [local fault recovery](docs/LIVE-EXPERIMENTS.md).
+
 A paused world performs no cognition/action cycle. `resume` changes persistent status but never starts a background process. Continuous mode holds a renewable SQLite lease. At an ordinary in-flight cognition/action boundary, Ctrl+C finishes the safe boundary before releasing the lease. During a long-profile provider cooldown it instead stops future retries immediately, preserves the unfinished tick journal, releases the lease, and exits without advancing the tick.
 
 ## Observation experiments
@@ -136,6 +138,8 @@ Proposal details and lineage are private to the involved inhabitants and Owner/k
 
 The CLI loads ignored local `.env` configuration when present. Live cognition supports `openrouter`, `openai`, and `opencode-zen` through one OpenAI-compatible transport. Provider identity, model identifier, endpoint, attribution, run limits, token usage, and latency never enter agent observations. See [Live Experiments](docs/LIVE-EXPERIMENTS.md).
 
+The complete cognition input, including projection identifiers and delivery/truncation metadata, must fit the configured 8,000 estimated-token budget. Content and its delivery IDs are admitted or rejected together; cursor proposals cover only admitted information. Pending mandatory observations retain priority over optional history.
+
 Cognition gives new addressed messages and causal observations first. It also retains up to four recent peer messages involving the inhabitant in an 800 estimated-token conversation window, after those messages have been consumed. Own outbound messages qualify immediately; unseen inbound messages stay in the new-message path, and Owner or other agents' conversations never enter this window. The section yields to mandatory new observations under the unchanged per-turn budget. It is factual short-term context, separate from memory and task state; the kernel does not resolve contradictions.
 After that conversation window, cognition includes up to six already-observed own action results in chronological order, within a separate 800 estimated-token window. Each entry identifies the action, tick, success or failure, safe target, and compact result. File contents and execution output remain in their dedicated bounded sections; provider fallback does not count as an action. New action results keep priority and are never duplicated in this history on the same turn.
 
@@ -169,6 +173,8 @@ npm.cmd run world -- experiment --live --ticks 500 --profile long --label zen-50
 `pending-provider migrate` requires a durable frozen context, a healthy database, no active runner lease, complete target configuration, and a successful read-only provider check. It changes only scheduler routing and clears the old cooldown in one transaction. Its audit event is Owner-only. Repeating the same migration is a no-op. Compare `pending-provider show` before and after: `pendingContextSha256`, `agentState` resources/cursors, tick, agent order, and completed IDs must match; only routing and cooldown fields should change. The command reveals no frozen context content. The real tick-185 migration and live commands above are for the Owner to run manually.
 
 ## Execution
+
+`EXECUTE_PROGRAM` and `INVOKE_TOOL` reserve the maximum 100 Local Compute before sandbox dispatch. Admission rejection exposes only neutral required/available facts, creates no execution/outcome row, and emits no `PROGRAM_EXECUTION_STARTED` or `TOOL_INVOKED`. `PROGRAM_EXECUTION_STARTED` now means resource admission succeeded and sandbox dispatch began; Docker image preflight can still reject before a container launches. Actual-result settlement and conservative interrupted-execution recovery remain unchanged. Historical events are not rewritten.
 
 `EXECUTE_PROGRAM` and userland tools support `node` and `python` only. Docker is invoked with structured arguments and kernel-owned immutable references:
 

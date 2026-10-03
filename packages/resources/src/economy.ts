@@ -39,6 +39,10 @@ function safeText(value:string, limit=500):string {
   return value;
 }
 
+export class InsufficientReservationBalanceError extends Error {
+  constructor(readonly kind:ValueKind,readonly unit:string,readonly requiredReservation:number,readonly available:number){super('Insufficient available balance to reserve');}
+}
+
 /** Kernel-owned value boundary. Agent actions only call transfer/request with a fenced actor. */
 export class EconomyService {
   constructor(readonly repo:WorldRepository) {}
@@ -148,7 +152,7 @@ export class EconomyService {
   reserve(id:string,kind:ValueKind,unit:string,account:string,amount:number,purpose:string):void {
     this.requireModel();integer(amount);safeText(id,200);safeText(purpose,80);
     this.atomic(()=>{const old=this.reservation(id);if(old){if(old.kind!==kind||old.unit!==unit||old.account!==account||old.amount!==amount||old.purpose!==purpose)throw new Error('Reservation identity conflict');return;}
-      this.ensureAccount(kind,unit,account);const cognitive=kind==='RESOURCE'&&unit==='COGNITION_CREDIT',before=cognitive?this.cognitionCapacity(account):0,balance=this.balance(kind,unit,account);if(balance.available<amount)throw new Error('Insufficient available balance to reserve');
+      this.ensureAccount(kind,unit,account);const cognitive=kind==='RESOURCE'&&unit==='COGNITION_CREDIT',before=cognitive?this.cognitionCapacity(account):0,balance=this.balance(kind,unit,account);if(balance.available<amount)throw new InsufficientReservationBalanceError(kind,unit,amount,balance.available);
       this.db.prepare('UPDATE value_accounts SET reserved=? WHERE kind=? AND unit=? AND account=?').run(checkedSum(balance.reserved,amount),kind,unit,account);
       this.db.prepare("INSERT INTO value_reservations VALUES(?,?,?,?,?,?,'RESERVED',?,NULL)").run(id,kind,unit,account,amount,purpose,new Date().toISOString());this.journalReservation(id,'RESERVED',amount);
       if(cognitive)this.dormancy(account,before,this.cognitionCapacity(account));
