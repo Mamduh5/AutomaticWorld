@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import { InjectedCrash,type MutationTransition } from '../packages/operations/sr
 import { WorldEngine,defaultConfig } from '../packages/world/src/engine.js';
 
 const dirs:string[]=[];afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
-async function base(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-reconcile-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir));await engine.genesis();return engine;}
+async function base(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-reconcile-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir));await engine.genesis();fundCognition(engine);return engine;}
 
 describe('durable filesystem reconciliation',()=>{
   it.each(['after-prepared','after-filesystem-commit','after-filesystem-journal','after-database-commit'] as MutationTransition[])('reconciles an interrupted private replacement at %s exactly once',async(transition)=>{const initial=await base(),dir=initial.config.dataDir,mam=initial.repo.getAgent('Mam')!;await initial.perform(mam.id,{type:'CREATE_TEXT_FILE',path:'nested/value.txt',content:'old'});initial.close();let injected=false;const crashed=new WorldEngine(defaultConfig(dir),undefined,undefined,{}, {onTransition(point){if(point===transition&&!injected){injected=true;throw new InjectedCrash(point);}}});await expect(crashed.mutations.mutate({agentId:mam.id,space:'private',path:'nested/value.txt',kind:'write',content:'replacement',tick:1,eventType:'FILE_UPDATED'})).rejects.toThrow(InjectedCrash);crashed.close();const restarted=new WorldEngine(defaultConfig(dir));await restarted.initialize();const committed=transition!=='after-prepared';expect((await restarted.files.read(mam.id,'nested/value.txt')).content).toBe(committed?'replacement':'old');expect(restarted.repo.getAgent(mam.id)?.storageBytes).toBe(committed?11:3);expect(restarted.repo.getArtifactRevision('private','nested/value.txt')?.revision).toBe(committed?2:1);expect(restarted.repo.listEvents(100).filter((event)=>event.type==='FILE_UPDATED')).toHaveLength(committed?1:0);expect(restarted.repo.incompleteFilesystemOperations()).toHaveLength(0);expect((await restarted.files.list(mam.id,'nested')).some((file)=>file.includes('.aw-'))).toBe(false);restarted.close();});

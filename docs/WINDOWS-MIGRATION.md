@@ -14,7 +14,7 @@ source code / Git repository
 ```
 
 - The Git repository is source and documentation. It is regenerable by cloning the same revision.
-- The directory selected by `WORLD_DATA_DIR` is mandatory. Its default is `world-data/`. Copy the whole directory, including `world.sqlite`, `agents/`, `shared/`, and `system/`. The database contains identity, ticks, resources, messages, memories, tools, proposals, lineage, cursors, events, run records, and any pending partial-tick/provider-cooldown scheduler journal; the subdirectories contain real workspaces, shared artifacts, and immutable userland tool snapshots.
+- The directory selected by `WORLD_DATA_DIR` is mandatory. Its default is `world-data/`. Copy the whole directory, including `world.sqlite`, `agents/`, `shared/`, and `system/`. The database contains identity, ticks, resource/capital accounts, immutable value/reservation journals, purchase requests, idempotency keys, resource-model version, cognition holds/outcomes, messages, memories, tools, proposals, lineage, cursors, events, run records, and any pending partial-tick/provider-cooldown scheduler journal; the subdirectories contain real workspaces, shared artifacts, and immutable userland tool snapshots.
 - `.env` is mandatory when the installation uses live cognition, email, LINE, a non-default state path, or non-default laws. It is local secret/configuration, is ignored by Git, and must never be committed.
 - For OpenCode Zen, move `OPENCODE_ZEN_API_KEY` securely with `.env` and confirm `COGNITION_PROVIDER=opencode-zen` and `OPENCODE_ZEN_MODEL=space-bunny-free` on the destination. Never place `.env` in Git, `WORLD_DATA_DIR`, or checkpoint folders.
 - `${WORLD_DATA_DIR}-checkpoints/` is optional but strongly recommended. With the default state path this is `world-data-checkpoints/`. It contains recovery copies, not the active universe.
@@ -188,7 +188,7 @@ pnpm.cmd world inspect Mam
 pnpm.cmd world inspect Toey
 ```
 
-`doctor --live` verifies provider authentication/connectivity but deliberately performs no inference request. While following this paused migration sequence, its `World state` check is expected to report `paused`, so the overall result remains `NOT READY`; every other required check should pass. Review the outputs against the old PC: tick, founder UUIDs, population, compute/storage balances, private/shared artifacts, accessible tools, descendant proposals/lineage, sleep state, and observation cursor fields in each cognition-context diagnostic. Diagnostics do not advance cursors.
+`doctor --live` verifies provider authentication/connectivity but deliberately performs no inference request. While following this paused migration sequence, its `World state` check is expected to report `paused`, so the overall result remains `NOT READY`; ledger checks and cognition availability must also be understood. An unmigrated universe reports migration required; a migrated universe with zero externally supplied cognition is dormant. While v1, live doctor makes no provider calls. Review the outputs against the old PC: tick, founder UUIDs, population, legacy compute or separate cognition/local balances, capital and storage, private/shared artifacts, accessible tools, descendant proposals/lineage, sleep state, and observation cursor fields in each cognition-context diagnostic. Diagnostics do not advance cursors.
 
 ## I. Normal operations
 
@@ -200,7 +200,7 @@ pnpm.cmd world resume
 pnpm.cmd world status
 pnpm.cmd world checkpoint create <safe-label>
 pnpm.cmd world checkpoint list
-pnpm.cmd world experiment --live --label <safe-label> --ticks 5 --max-cognition-turns 10 --max-input-tokens 50000 --max-output-tokens 10000 --compute-ceiling 250 --execution-limit 5 --wall-ms 300000
+pnpm.cmd world experiment --live --label <safe-label> --ticks 5 --max-cognition-turns 10 --max-input-tokens 50000 --max-output-tokens 10000 --max-local-compute 250 --max-cognition-credits 10 --execution-limit 5 --wall-ms 300000
 pnpm.cmd world experiment --ticks 500 --profile long --show-limits
 pnpm.cmd world experiment --live --ticks 500 --profile long
 pnpm.cmd world runs
@@ -236,7 +236,7 @@ NEW PC:
 8. Run `pnpm.cmd install --frozen-lockfile` and `pnpm.cmd typecheck`.
 9. Place the copied active world directory at the path selected by `WORLD_DATA_DIR`; optionally place checkpoints beside it.
 10. Place/recreate `.env` and verify its provider/model and state path.
-11. Run `pnpm.cmd world status` to open the copied database and apply automatic schema migrations.
+11. Run `pnpm.cmd world status` for read-only inspection, then `pnpm.cmd world resources migration-status`. Status never applies the resource migration.
 12. Run the read-only integrity command in section F; require `ok`.
 13. Run `pnpm.cmd world agents`; require the exact Mam/Toey UUIDs in section G. Compare status, inspect, files, tools, lineage, proposals, resources, sleep state, and cognition-context cursors with the old PC.
 14. Run `pnpm.cmd world doctor`.
@@ -250,7 +250,48 @@ NEW PC:
 - Mam/Toey UUID mismatch: stop. This is a different/fresh universe. Close all processes, move that incorrect directory aside for diagnosis, and restore the verified copied state or checkpoint. Do not continue cognition.
 - Docker unavailable or not using Linux containers: keep the world paused, start/fix Docker Desktop and WSL 2/virtualization, then rerun `pnpm.cmd world doctor`.
 - Incomplete `.env`: keep the world paused, restore the missing values securely, and rerun `doctor --live`. Do not test provider readiness by spending an inference turn.
-- Old schema: retain a backup, use the matching current source, and let `pnpm.cmd world status` perform automatic additive migrations. If it fails, restore and diagnose; never improvise DDL on the only copy.
-- Expired stale runner lease: `debug runner-lease` reports it as recoverable. A legitimate runner atomically replaces it; the doctor safely tests acquire/release inside a rolled-back diagnostic. Do not manually delete it unless conducting a separate reviewed recovery.
+- Old resource model: retain a verified pre-migration checkpoint, inspect `resources migrate-legacy --preview`, and use the explicit paused apply workflow below. Status never applies resource migration. Never improvise DDL on the only copy.
+- Expired stale runner lease: `debug runner-lease` reports it as recoverable. A legitimate runner atomically replaces it during ordinary operation; read-only doctor omits write probes. Resource migration requires that no lease row remains, including stale rows; resolve stale leases through a separate reviewed operational recovery. Do not manually delete it unless conducting a separate reviewed recovery.
 - Active valid lease: another runner may still be alive. Find and stop that process normally. Do not steal the lease.
 - Accidental fresh initialization: stop before cognition, pause/close processes, preserve the mistaken directory only if needed for diagnosis, and restore the original copied `WORLD_DATA_DIR` or a verified checkpoint into an empty destination.
+
+## L. Explicit resource-model migration on either PC
+
+Git contains implementation and documentation. The stopped world directory contains the authoritative economy/resource state, not financial credentials. Checkpoints capture all SQLite tables, agent/shared artifacts and immutable tool snapshots. Keep provider/payment keys, webhook secrets and account credentials only in secure local `.env`/configuration, transported separately. Never copy them into an inhabitant artifact or ledger memo.
+
+After copying, keep the world paused. Confirm founder UUIDs with `pnpm.cmd world agents`: Mam `29c9d81e-d1d8-4807-893f-841cffce01fe`, Toey `eef2caca-cf78-4e90-a536-7115e8af1daf`. Inspect pending scheduler and lease state before apply.
+
+```powershell
+pnpm.cmd world resources migration-status
+pnpm.cmd world resources migrate-legacy --preview
+pnpm.cmd world doctor --integrity-only
+# Later, only after explicit Owner review:
+pnpm.cmd world resources migrate-legacy --apply
+pnpm.cmd world status
+pnpm.cmd world resources status
+pnpm.cmd world economy status
+pnpm.cmd world doctor --integrity-only
+```
+
+The expected protected T1805 projection is Mam legacy 2610 -> Local Compute 2610/cognition 0; Toey legacy 0 -> Local Compute 0/cognition 0. Storage remains 36495/47924 bytes, Mam remains asleep until 1900, tick remains 1805, and capital/world reserve remain zero. Both founders are dormant until a later external cognition allocation. Migration does not duplicate compute or create cognition supply. No resume or allocation is implied by copying/installing code.
+
+Before apply, integrity-only doctor reports SQLite `ok` plus migration required (exit 2). After apply it verifies cached accounts against immutable ledgers, reservation journals, cognition holds, idempotency and purchase holds. Use `resources ledger` and `economy ledger` to review provenance. See [full design and Owner commands](RESOURCES-ECONOMY.md).
+
+## M. Restore a pre-resource-migration checkpoint
+
+Stop every runner and preserve the entire current world and post-migration economic journal first. Select the verified pre-migration checkpoint from `checkpoint list` (the protected checkpoint ID is `ced54360-e484-497e-a589-73e87060ddc0`, label `self-activity-observation-1000-t1805`). Check its metadata/hash against the expected backup. Restore into a new empty review directory; do not delete the active universe.
+
+```powershell
+$recoveryRoot = Join-Path (Get-Location) 'world-data.restore-review'
+if (Test-Path -LiteralPath $recoveryRoot) { throw 'Choose a new empty recovery directory' }
+robocopy '<verified-checkpoint-backup-path>' $recoveryRoot /E /COPY:DAT /DCOPY:DAT /R:1 /W:1
+if ($LASTEXITCODE -ge 8) { throw 'Checkpoint copy failed' }
+$env:WORLD_DATA_DIR = $recoveryRoot
+pnpm.cmd world status
+pnpm.cmd world agents
+pnpm.cmd world resources migration-status
+pnpm.cmd world resources migrate-legacy --preview
+pnpm.cmd world doctor --integrity-only
+```
+
+Require the expected tick, paused status, founder UUIDs, storage, legacy balances and SQLite integrity before selecting a recovery universe for future operations. A pre-migration checkpoint remains v1; current code safely refuses cognition until explicit migration. This recovery choice rolls back later internal economic history, so preserve that later history for audit. It performs no actual external refund or payment.

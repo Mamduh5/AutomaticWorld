@@ -1,8 +1,9 @@
+export { EconomyService,RESOURCE_TYPES,formatCapital } from './economy.js';
+export type { ResourceType,Balance,ValueKind } from './economy.js';
 export interface ResourceRules {
-  initialComputeCredits:number;
+  initialLocalCompute:number;
   storageLimitBytes:number;
-  computeCostPerTurn:number;
-  computeCostPerAction:number;
+  cognitionCreditCostPerLogicalTurn:1;
   executionBaseCost:number;
   executionMaxCost:number;
 }

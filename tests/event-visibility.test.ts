@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,7 +9,7 @@ import { FakeExecutionSandbox } from '../packages/sandbox/src/docker.js';
 import { WorldEngine,defaultConfig } from '../packages/world/src/engine.js';
 
 const dirs:string[]=[];
-async function engine(provider?:CognitionProvider,sandbox?:FakeExecutionSandbox){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-visibility-'));dirs.push(dir);const value=new WorldEngine(defaultConfig(dir),provider,sandbox);await value.genesis();return value;}
+async function engine(provider?:CognitionProvider,sandbox?:FakeExecutionSandbox){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-visibility-'));dirs.push(dir);const value=new WorldEngine(defaultConfig(dir),provider,sandbox);await value.genesis();fundCognition(value);return value;}
 afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
 
 describe('event visibility boundary',()=>{
@@ -34,7 +35,7 @@ describe('event visibility boundary',()=>{
     const inputs:CognitionInput[]=[];
     const provider:CognitionProvider={async think(input){inputs.push(input);return{thoughtSummary:'discover',selectedAction:{type:'LIST_INHABITANTS'}};}};
     const e=await engine(provider);e.resume();await e.run(2);
-    for(const name of ['Mam','Toey']){const second=inputs.filter((input)=>input.identity.name===name)[1]!,result=second.currentObservation.nearbyOrRelevantEvents.find((event)=>event.type==='ACTION_RESULT');expect(result?.summary.effects).toEqual([{inhabitants:e.listPublicInhabitants(second.identity.id)}]);const serialized=JSON.stringify(result);expect(serialized).not.toMatch(/cognitionConfig|capabilities|metadata|computeCredits|storageBytes|sleepingUntilTick|parentIds|createdAt/);}
+    for(const name of ['Mam','Toey']){const second=inputs.filter((input)=>input.identity.name===name)[1]!,result=second.currentObservation.nearbyOrRelevantEvents.find((event)=>event.type==='ACTION_RESULT');const observed=(result?.summary.effects as {inhabitants:{id:string;name:string;generation:number;status:string}[]}[])[0]!.inhabitants;expect(observed.map(({id,name,generation,status})=>({id,name,generation,status}))).toEqual(e.listPublicInhabitants(second.identity.id).map(({id,name,generation,status})=>({id,name,generation,status})));expect(observed.every(item=>'cognitionDormant' in item&&'cognitionCredits' in item&&'localCompute' in item)).toBe(true);const serialized=JSON.stringify(result);expect(serialized).not.toMatch(/cognitionConfig|capabilities|metadata|computeCredits|storageBytes|sleepingUntilTick|parentIds|createdAt/);}
     e.close();
   });
 });

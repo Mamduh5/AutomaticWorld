@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import { runnerLeaseDoctorChecks } from '../packages/operations/src/runner-lease
 import { WorldEngine,defaultConfig } from '../packages/world/src/engine.js';
 
 const dirs:string[]=[];afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
-async function engine(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-lease-doctor-'));dirs.push(dir);const value=new WorldEngine(defaultConfig(dir));await value.genesis();return value;}
+async function engine(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-lease-doctor-'));dirs.push(dir);const value=new WorldEngine(defaultConfig(dir));await value.genesis();fundCognition(value);return value;}
 
 describe('runner lease diagnostics',()=>{
   it('probes an absent lease without persisting a row',async()=>{const e=await engine(),checks=runnerLeaseDoctorChecks(e.repo);expect(checks).toEqual(expect.arrayContaining([expect.objectContaining({name:'Runner lease',passed:true,detail:'none'}),expect.objectContaining({name:'Runner lease acquire/release',passed:true})]));expect(e.repo.runnerLeaseStatus().present).toBe(false);e.close();});

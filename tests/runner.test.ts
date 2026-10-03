@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import { FakeExecutionSandbox } from '../packages/sandbox/src/docker.js';
 import { WorldEngine,defaultConfig,type WorldConfig } from '../packages/world/src/engine.js';
 import { ContinuousWorldRunner } from '../packages/world/src/runner.js';
 const dirs:string[]=[];afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
-async function engine(provider?:CognitionProvider,sandbox=new FakeExecutionSandbox(()=>({success:true,exitCode:0,stdout:'',stderr:'',timedOut:false,durationMs:1,truncated:false})),overrides:Partial<WorldConfig>={}){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-runner-'));dirs.push(dir);const e=new WorldEngine({...defaultConfig(dir),...overrides},provider,sandbox);await e.genesis();e.resume();return e;}
+async function engine(provider?:CognitionProvider,sandbox=new FakeExecutionSandbox(()=>({success:true,exitCode:0,stdout:'',stderr:'',timedOut:false,durationMs:1,truncated:false})),overrides:Partial<WorldConfig>={}){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-runner-'));dirs.push(dir);const e=new WorldEngine({...defaultConfig(dir),...overrides},provider,sandbox);await e.genesis();fundCognition(e);e.resume();return e;}
 function currentLeaseToken(e:WorldEngine):string{return(e.repo.db.prepare('SELECT token FROM runner_lease').get() as {token:string}).token;}
 describe('continuous runner',()=>{
   it('honors a maximum tick count and releases its database lease',async()=>{const e=await engine();const result=await new ContinuousWorldRunner(e).run({tickMs:0,maxTicks:2});expect(result).toMatchObject({ticks:2,reason:'maximum ticks reached'});expect(result.runId).toMatch(/^[0-9a-f-]{36}$/);expect(e.repo.getWorld()?.currentTick).toBe(2);expect(e.repo.acquireRunnerLease('later',1_000)).toBe(true);e.close();});

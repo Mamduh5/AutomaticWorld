@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,8 +12,8 @@ const dirs:string[]=[];
 const policy={initialBackoffMs:5,maxBackoffMs:15,maxSuspensionMs:250,retryAfterMaxMs:100};
 const success=(ticks=1):CognitionOutput=>({thoughtSummary:'Selected WAIT.',selectedAction:{type:'WAIT',ticks},reasoningMetadata:{providerRequestSucceeded:true,providerAttempts:1,providerUsageAvailable:true,inputTokens:7,outputTokens:2}});
 const failure=(phase:'timeout'|'transport'|'response_parse'|'response_schema'|'http',httpStatus?:number):CognitionOutput=>({thoughtSummary:'Cognition output could not be validated; safely waited.',selectedAction:{type:'WAIT',ticks:1},reasoningMetadata:{providerError:'Provider unavailable',providerRequestSucceeded:false,providerAttempts:2,providerUsageAvailable:false,inputTokens:0,outputTokens:0,providerFailure:{phase,...(httpStatus===undefined?{}:{httpStatus}),message:'Provider unavailable',retryable:true}}});
-async function setup(provider:CognitionProvider){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-provider-suspension-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir),provider);await engine.genesis();engine.resume();return{engine,dir};}
-const state=(engine:WorldEngine,name:string)=>{const agent=engine.repo.getAgent(name)!;return{compute:agent.computeCredits,sleep:agent.sleepingUntilTick,cursor:engine.repo.observationCursor(agent.id),memories:engine.repo.memoryCount(agent.id)};};
+async function setup(provider:CognitionProvider){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-provider-suspension-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir),provider);await engine.genesis();fundCognition(engine);engine.resume();return{engine,dir};}
+const state=(engine:WorldEngine,name:string)=>{const agent=engine.repo.getAgent(name)!;return{compute:engine.repo.economy.self(agent.id).cognitionCredits.total,sleep:agent.sleepingUntilTick,cursor:engine.repo.observationCursor(agent.id),memories:engine.repo.memoryCount(agent.id)};};
 const runEvents=(engine:WorldEngine,id:string)=>{const run=engine.repo.getAutonomyRun(id)!;return engine.repo.eventsBetweenIds(run.startEventId,run.endEventId!);};
 afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
 
@@ -39,7 +40,7 @@ describe('long-profile provider infrastructure suspension',()=>{
     expect(events.filter((event)=>event.type==='AGENT_WAITED'&&event.actorId===engine.repo.getAgent('Mam')!.id)).toHaveLength(1);
     expect(events.find((event)=>event.type==='PROVIDER_COOLDOWN_STARTED')?.payload).toMatchObject({phase:'timeout',providerAttempts:2});
     expect(report.facts).toMatchObject({rateLimitSuspensions:0,providerSuspensions:1,providerSuspensionRetries:1,providerSuspensionRecoveries:1,timeoutSuspensions:1,providerHttpAttemptsRecorded:4,shortProviderRetriesRecorded:1,providerAttemptsWithUnknownUsage:2,logicalCognitionOpportunities:2});
-    expect(before.compute-state(engine,'Mam').compute).toBe(6);engine.close();
+    expect(before.compute-state(engine,'Mam').compute).toBe(1);engine.close();
   });
 
   it('preserves a completed peer and frozen pending context through cancellation and restart',async()=>{

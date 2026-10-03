@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { createHash,randomUUID } from 'node:crypto';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,7 +11,7 @@ import { prepareCognitionContext } from '../packages/world/src/cognition-context
 
 const dirs:string[]=[];
 afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
-async function setup(provider?:CognitionProvider,overrides:Partial<WorldConfig>={}){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-context-'));dirs.push(dir);const engine=new WorldEngine({...defaultConfig(dir),...overrides},provider);await engine.genesis();return engine;}
+async function setup(provider?:CognitionProvider,overrides:Partial<WorldConfig>={}){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-context-'));dirs.push(dir);const engine=new WorldEngine({...defaultConfig(dir),...overrides},provider);await engine.genesis();fundCognition(engine);return engine;}
 const wait=()=>({thoughtSummary:'wait',selectedAction:{type:'WAIT' as const,ticks:1}});
 function extraAgent(name:string):AgentRecord{return{id:randomUUID(),name,createdAt:new Date().toISOString(),generation:0,parentIds:[],status:'active',cognitionConfig:{provider:'test'},capabilities:[...CAPABILITIES],metadata:{test:true},computeCredits:10_000,storageBytes:0,sleepingUntilTick:0,eligibleFromTick:0};}
 const context=(engine:WorldEngine,agent:AgentRecord)=>prepareCognitionContext(engine.repo,engine.files,agent,engine.repo.getWorld()!,{budgetTokens:engine.config.cognitionInputBudgetTokens,outputReserveTokens:engine.config.cognitionOutputReserveTokens});

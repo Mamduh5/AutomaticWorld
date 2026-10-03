@@ -1,6 +1,24 @@
 # Autonomous AI World
 
-A local-first, persistent world kernel with Mam and Toey as its stable founders. The world supplies capabilities, causal constraints, finite resources, and audit history. It supplies no professions, goals, quests, economy, civilization stages, population targets, or scripted conversations.
+A local-first, persistent world kernel with Mam and Toey as its stable founders. The world supplies capabilities, causal constraints, finite resources, and audit history. It supplies no professions, goals, quests, economic goals, civilization stages, population targets, or scripted conversations.
+
+## Resources and external economy
+
+[Resource/economy laws and exact Owner commands](docs/RESOURCES-ECONOMY.md) separate Cognition Credits, Local Compute, Storage and integer monetary capital. The [legacy compute audit](docs/RESOURCE-COMPUTE-AUDIT.md) lists every former compute path. Zero cognition means reversible dormancy; execution exhaustion does not prevent ordinary kernel primitives when cognition is funded. There is no passive regeneration, automatic money-to-resource conversion, or agent-authorized external payment.
+
+Existing universes require an **explicit paused migration**. Read-only status never applies it. Legacy compute maps 1:1 to Local Compute, with zero new cognition/capital. The protected T1805 checkpoint is not migrated by implementation or installation.
+
+```powershell
+pnpm.cmd world resources migration-status
+pnpm.cmd world resources migrate-legacy --preview
+pnpm.cmd world doctor --integrity-only
+# Only when the Owner later chooses to apply:
+pnpm.cmd world resources migrate-legacy --apply
+pnpm.cmd world status
+pnpm.cmd world doctor --integrity-only
+```
+
+Genesis for a new universe allocates only the recorded Local Compute allowance. Cognition requires a later explicit Owner allocation; see the resource guide. Do not run genesis when moving an existing universe to another PC.
 
 ## Setup
 
@@ -31,7 +49,7 @@ pnpm world resume
 pnpm world tick
 pnpm world run --ticks 10
 pnpm world run --continuous --tick-ms 5000
-pnpm world run --continuous --ticks 100 --compute-ceiling 1000
+pnpm world run --continuous --ticks 100 --max-local-compute 1000 --max-cognition-credits 1000
 pnpm world checkpoint create genesis-live-001-before
 pnpm world experiment --live --label genesis-live-001 --ticks 25
 pnpm world experiment --ticks 500 --profile long --show-limits
@@ -73,7 +91,7 @@ Normal observation keeps the conservative default experiment ceilings:
 npm.cmd run world -- experiment --live --ticks 20
 ```
 
-The default profile uses a 1,000 compute-expenditure ceiling, two cognition turns per requested tick, 250,000 input tokens, 50,000 output tokens, 20 executions, and 900,000 ms wall time. These are aggregate run ceilings. `--ticks` independently specifies the maximum attempted world-tick advancement.
+The default profile uses a 1,000 Local Compute and 1,000 Cognition Credit consumption ceilings, two cognition turns per requested tick, 250,000 input tokens, 50,000 output tokens, 20 executions, and 900,000 ms wall time. These are aggregate run ceilings. `--ticks` independently specifies the maximum attempted world-tick advancement.
 
 For a deliberately long observation, select the long profile explicitly:
 
@@ -81,17 +99,17 @@ For a deliberately long observation, select the long profile explicitly:
 npm.cmd run world -- experiment --live --ticks 500 --profile long
 ```
 
-For 500 ticks this resolves to 20,000 compute, 5,000 cognition turns, 10,000,000 input tokens, 500,000 output tokens, 1,000 executions, and 10,800,000 ms wall time. The CLI prints these effective values before acquiring the runner lease. Preview them without a lease, cognition, tick advancement, or compute use with:
+For 500 ticks this resolves to 20,000 Local Compute, 5,000 Cognition Credits, 5,000 successful cognition turns, 10,000,000 input tokens, 500,000 output tokens, 1,000 executions, and 10,800,000 ms wall time. The CLI prints these effective values before acquiring the runner lease. Preview them without a lease, cognition, tick advancement, or resource use with:
 
 ```powershell
 npm.cmd run world -- experiment --ticks 500 --profile long --show-limits
 ```
 
-Explicit `--max-input-tokens`, `--max-output-tokens`, `--max-compute`, `--max-cognition-turns`, `--max-executions`, and `--max-wall-clock-ms` values override the selected profile. The compatibility names `--compute-ceiling`, `--execution-limit`, and `--wall-ms` remain accepted. Every limit must be a positive safe integer.
+Explicit `--max-input-tokens`, `--max-output-tokens`, `--max-local-compute`, `--max-cognition-credits`, `--max-cognition-turns`, `--max-executions`, and `--max-wall-clock-ms` values override the selected profile. The compatibility names `--execution-limit` and `--wall-ms` remain accepted. Old aggregate `--compute-ceiling` and `--max-compute` are rejected rather than reinterpreted. Every limit must be a positive safe integer.
 
-The long profile may consume substantial provider inference and inhabitant compute. It does not mint or replenish inhabitant compute, enlarge the per-turn `COGNITION_INPUT_BUDGET_TOKENS=8000`, change `WAIT`, alter descendant laws, or weaken sandbox/security checks. Runs can still stop because inhabitants exhaust their resources, the world is paused, provider service or account limits intervene, the circuit breaker opens, or another configured ceiling is reached. AutomaticWorld ceilings are separate from OpenRouter/provider rate limits, availability, and account quotas; selecting `long` cannot guarantee continuous provider service.
+The long profile may consume substantial cognition and Local Compute. It does not mint or replenish inhabitant resources, enlarge the per-turn `COGNITION_INPUT_BUDGET_TOKENS=8000`, change `WAIT`, alter descendant laws, or weaken sandbox/security checks. Runs can still stop because inhabitants exhaust their resources, the world is paused, provider service or account limits intervene, the circuit breaker opens, or another configured ceiling is reached. AutomaticWorld ceilings are separate from OpenRouter/provider rate limits, availability, and account quotas; selecting `long` cannot guarantee continuous provider service.
 
-For the long profile only, a retryable provider HTTP 429 suspends the pending tick instead of becoming an inhabitant turn. World time, the pending inhabitant's observation cursor, compute, sleep state, memory, and actions stay unchanged. The runner establishes a provider/model-scoped cooldown, waits in real time, and retries the same persisted cognition boundary before considering the next inhabitant. The fallback schedule is 2, 4, 8, 16, 32, then 60 seconds repeatedly, with a 30-minute maximum suspension. A valid `Retry-After` is honored up to 30 minutes. Cooldown time counts toward the run wall-clock ceiling. The default profile retains the existing bounded provider retry, kernel fallback, and infrastructure-breaker behavior, so short runs do not wait through this long cooldown policy.
+For the long profile only, a retryable provider HTTP 429 suspends the pending tick instead of becoming an inhabitant turn. World time, the pending inhabitant's observation cursor, resource totals, sleep state, memory, and actions stay unchanged. The runner establishes a provider/model-scoped cooldown, waits in real time, and retries the same persisted cognition boundary before considering the next inhabitant. The fallback schedule is 2, 4, 8, 16, 32, then 60 seconds repeatedly, with a 30-minute maximum suspension. A valid `Retry-After` is honored up to 30 minutes. Cooldown time counts toward the run wall-clock ceiling. The default profile retains the existing bounded provider retry, kernel fallback, and infrastructure-breaker behavior, so short runs do not wait through this long cooldown policy.
 
 Partial-tick scheduling progress is durable in `world.sqlite`: the eligible-agent snapshot, completed inhabitants, pending inhabitant, and bounded prepared cognition context survive Ctrl+C, process failure, and runner restart. A successful inhabitant is not scheduled a second time merely because a later inhabitant was rate limited. `TICK_COMPLETED` is emitted only after every scheduled inhabitant reaches its real normal boundary. If the 30-minute suspension expires, the run stops with `provider rate-limit suspension exhausted`; the pending tick remains resumable. A later long-profile run using the same provider/model scope resumes it automatically.
 
@@ -112,7 +130,7 @@ npm.cmd run world -- debug descendant-proposals
 
 ## Descendants
 
-`PROPOSE_DESCENDANT`, `RESPOND_DESCENDANT_PROPOSAL`, and `CANCEL_DESCENDANT_PROPOSAL` expose a neutral two-parent capability. A proposal reserves the proposer's stated compute; rejection or cancellation releases that reservation. Acceptance atomically consumes both contributions, consumes `DESCENDANT_CREATION_OVERHEAD`, and gives the remainder to a new autonomous inhabitant. Defaults are a minimum 250 compute per parent, 1,000 initial child compute after 100 overhead, and a ceiling of 50 active inhabitants. Configure these laws with `DESCENDANT_MIN_PARENT_CONTRIBUTION`, `DESCENDANT_MIN_INITIAL_COMPUTE`, `DESCENDANT_CREATION_OVERHEAD`, and `WORLD_MAX_ACTIVE_INHABITANTS`.
+`PROPOSE_DESCENDANT`, `RESPOND_DESCENDANT_PROPOSAL`, and `CANCEL_DESCENDANT_PROPOSAL` expose a neutral two-parent capability. Proposals and acceptance escrow separate `localComputeContribution` and `cognitionContribution` values; rejection/cancellation releases proposal holds. A child receives exactly the contributed resources and may have zero cognition, making it dormant. No resource starter pack, minimum viability or new creation overhead applies. `WORLD_MAX_ACTIVE_INHABITANTS` defaults to 50; the old `DESCENDANT_MIN_PARENT_CONTRIBUTION`, `DESCENDANT_MIN_INITIAL_COMPUTE` and `DESCENDANT_CREATION_OVERHEAD` settings are retired. Previously consented legacy operations retain their recorded overhead.
 
 Proposal details and lineage are private to the involved inhabitants and Owner/kernel diagnostics. Public presence and birth consequences expose only UUID, name, generation, and status. Newborn workspaces, memories, messages, executions, and private tools start empty; existing shared culture remains available normally. A child created during tick N becomes cognition-eligible at tick N+1. The current SQLite identity schema requires case-insensitive unique inhabitant names, so names are labels but duplicate labels are rejected explicitly; UUIDs remain canonical in proposal and lineage operations.
 

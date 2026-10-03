@@ -1,3 +1,4 @@
+import { fundCognition } from './resource-fixtures.js';
 import { createHmac } from 'node:crypto';
 import { mkdtemp,rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,7 @@ import { LineWebhookIngress } from '../packages/messaging/src/ingress.js';
 import { WorldEngine,defaultConfig } from '../packages/world/src/engine.js';
 
 const dirs:string[]=[];afterEach(async()=>{for(const dir of dirs.splice(0))await rm(dir,{recursive:true,force:true});});
-async function setup(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-ingress-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir));await engine.genesis();const ingress=new LineWebhookIngress(engine.ownerIngress,engine.repo,{channelSecret:'secret',ownerSourceId:'owner-line-id'});return{engine,ingress};}
+async function setup(){const dir=await mkdtemp(path.join(tmpdir(),'ai-world-ingress-'));dirs.push(dir);const engine=new WorldEngine(defaultConfig(dir));await engine.genesis();fundCognition(engine);const ingress=new LineWebhookIngress(engine.ownerIngress,engine.repo,{channelSecret:'secret',ownerSourceId:'owner-line-id'});return{engine,ingress};}
 const body=(events:unknown[])=>Buffer.from(JSON.stringify({destination:'channel',events}));
 const sign=(raw:Buffer)=>createHmac('sha256','secret').update(raw).digest('base64');
 const event=(text='Mam: hello',id='event-1',userId='owner-line-id')=>({type:'message',webhookEventId:id,deliveryContext:{isRedelivery:false},source:{type:'user',userId},message:{type:'text',id:'message-1',text}});
