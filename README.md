@@ -6,6 +6,8 @@ A local-first, persistent world kernel with Mam and Toey as its stable founders.
 
 [Resource/economy laws and exact Owner commands](docs/RESOURCES-ECONOMY.md) separate Cognition Credits, Local Compute, Storage and integer monetary capital. The [legacy compute audit](docs/RESOURCE-COMPUTE-AUDIT.md) lists every former compute path. Zero cognition means reversible dormancy; execution exhaustion does not prevent ordinary kernel primitives when cognition is funded. There is no passive regeneration, automatic money-to-resource conversion, or agent-authorized external payment.
 
+Inhabitants may use `CANCEL_RESOURCE_PURCHASE_REQUEST {requestId}` to withdraw their own still-PENDING request. It becomes CANCELLED, retains history and moves no resources or capital; it is distinct from Owner denial. Own pending facts appear in bounded cognition and `INSPECT_SELF`, while public listings exclude private requests. Dormancy and request age never cause automatic withdrawal. Capital means actual externally backed money; current cognition supply is Owner allowance/injection or provider free allowance, without simulated money, exchange rates or a new paid-purchase integration.
+
 Existing universes require an **explicit paused migration**. Read-only status never applies it. Legacy compute maps 1:1 to Local Compute, with zero new cognition/capital. The protected T1805 checkpoint is not migrated by implementation or installation.
 
 ```powershell

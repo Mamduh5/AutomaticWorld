@@ -67,8 +67,9 @@ describe('atomic complete cognition context admission',()=>{
     await e.perform(a.id,{type:'READ_FILE',path:'working.txt'});
     await e.perform(a.id,{type:'READ_FILE',path:'working.txt'});
     for(let i=0;i<10;i++){e.repo.sendMessage(b.id,'agent',a.id,0,'message '+i+'x'.repeat(1000));e.repo.addMemory(a.id,'knowledge','memory '+i+'x'.repeat(3000),0);}
-    const p=await prepareCognitionContext(e.repo,e.files,a,e.repo.getWorld()!,{budgetTokens:3000,outputReserveTokens:2000}),o=p.input.currentObservation;
-    expect(tokens(p.input)).toBeLessThanOrEqual(3000);expect(o.contextDelivery.newMessageIds).toEqual(o.newlyDeliveredMessages.map(m=>m.id));
+    // The new mandatory action schema increases foundation size; keep this fixture tightly bounded.
+    const p=await prepareCognitionContext(e.repo,e.files,a,e.repo.getWorld()!,{budgetTokens:3500,outputReserveTokens:2000}),o=p.input.currentObservation;
+    expect(tokens(p.input)).toBeLessThanOrEqual(3500);expect(o.contextDelivery.newMessageIds).toEqual(o.newlyDeliveredMessages.map(m=>m.id));
     expect(o.contextDelivery.actionResultIds).toEqual(o.nearbyOrRelevantEvents.filter(event=>event.delivery==='NEW_ACTION_RESULT').map(event=>event.id));
     expect(p.diagnostic.sections.deliveryMetadata!.estimatedTokens).toBe(estimateContextTokens(o.contextDelivery));
     expect(p.diagnostic.pending.messages).toBeGreaterThan(0);expect(e.repo.observationCursor(a.id).messageRowId).toBe(0);

@@ -11,6 +11,8 @@ The kernel supplies laws, persistence, constraints and capabilities. Inhabitants
 | Local Compute | Sandboxed CPU/runtime capacity | Existing bounded execution cost formula; durable maximum reservation |
 | Storage | Persistent filesystem usage and quota | Existing byte accounting, mutation journal and quota |
 
+Capital represents actual externally backed money, not simulated fiat. Current Cognition Credit supply comes from Owner allowance/resource injection (`OWNER_RESOURCE_INJECTION`) or recorded provider free allowance (`PROVIDER_FREE_ALLOWANCE`). Any monetary investment or purchase settlement must describe actual external money and actual obtained capacity; no fake revenue, provider price, currency-to-cognition rate, or payment integration is introduced.
+
 Money does not become cognition or execution capacity automatically. The payment instrument, provider routing and credentials remain kernel infrastructure. A zero currency holding is represented by an absent currency row and reads as zero; `WORLD_TREASURY` and every existing `AGENT:<UUID>` are valid capital owners independently of whether they have any currency holdings. Currency is never inferred or converted.
 
 New genesis creates zero cognition and capital. The configured `initialLocalCompute` sandbox allowance enters through recorded Owner injections. Migration grants no new cognition or capital. There is no passive regeneration. New descendant contributions may be zero: the old minimum-contribution, child-viability and creation-overhead settings are retired for v2. `WORLD_MAX_ACTIVE_INHABITANTS` remains a neutral capacity ceiling. Previously consented legacy operations retain their recorded overhead and exact endowment.
@@ -51,17 +53,29 @@ Only `EXECUTE_PROGRAM` and `INVOKE_TOOL` debit Local Compute. Each reserves `exe
 TRANSFER_RESOURCE {resource: COGNITION_CREDIT|LOCAL_COMPUTE, amount, to: AGENT:<UUID>|WORLD_RESERVE}
 TRANSFER_CAPITAL {currency, amount: minor units, to: AGENT:<UUID>|WORLD_TREASURY}
 REQUEST_RESOURCE_PURCHASE {resource, amount, reason, fundingAccount?, currency?, maxSpend?}
+CANCEL_RESOURCE_PURCHASE_REQUEST {requestId}
 PROPOSE_DESCENDANT {coParentAgentId, proposedName, localComputeContribution, cognitionContribution}
 RESPOND_DESCENDANT_PROPOSAL {proposalId, response: ACCEPT|REJECT, localComputeContribution?, cognitionContribution?}
 ```
 
 Transfers derive the source from the authenticated acting inhabitant. They cannot debit another inhabitant, create value, convert currency, or use a reserved balance. Capital transfer changes internal ownership only; it performs no external payment. Purchase requests may name only the caller's own funding account. Both currency and maximum spend are supplied together, or omitted for a request without authorized monetary spending. Request creation spends nothing and mints nothing.
 
+The requester may use `CANCEL_RESOURCE_PURCHASE_REQUEST` to withdraw only its own still-`PENDING` request. Withdrawal sets `CANCELLED`, retains the original historical row and creation event, and records a private requester-visible `RESOURCE_PURCHASE_REQUEST_CANCELLED` consequence. It is distinct from Owner `DENIED` and transfers no resources or capital, changes no storage, creates no hold/refund/settlement and performs no purchase. A fresh attempt against `CANCELLED` receives a lifecycle rejection; replay of the same durable successful action returns its cached result without another event. Foreign and missing request IDs produce the same safe authorization error.
+
+```text
+PENDING -> APPROVED -> SETTLED
+PENDING -> DENIED
+APPROVED -> DENIED (existing hold release)
+PENDING -> CANCELLED (requester withdrawal only)
+```
+
+`CANCELLED` is terminal: subsequent approval, denial, settlement or fresh withdrawal is rejected. Integrity checks cancellation evidence, immutable requester ownership against creation history, null settlement identity and absence of purchase holds/settlement ledger references. Status is already stored as unconstrained text; no schema migration is needed. Dormant inhabitants retain pending requests unchanged. There is no automatic age, dormancy or stale-request cancellation; the kernel does not decide whether the request remains useful.
+
 Approval reserves the requested maximum capital spend. Denial releases any approved hold. Settlement records actual resource obtained, actual cost and an external reference; it releases the hold, debits the actual cost and injects the actual capacity in one transaction. A request without authorized spending can settle at cost zero. No exchange rate is a world law, and no payment-provider integration exists.
 
 Descendant proposal holds cover separate resource amounts. Acceptance reserves the acceptor's amounts before filesystem work; both parents' resources remain protected through interruption. Child identity, lineage, endowments, proposal resolution and journal movements commit together after the private workspace is prepared. No starter resources or parent memories are copied. Existing storage-allocation semantics are unchanged: the child starts with zero usage and the existing per-inhabitant quota. This milestone adds no separate transferable storage pool.
 
-`INSPECT_SELF` exposes safe self state, resource totals/reserved/available, storage usage/quota, capital by currency and lineage. `LIST_INHABITANTS` exposes active identity/name/generation/lifecycle, cognition dormancy, resource totals/reserved/available and capital by currency. These public economic facts are a deliberate visibility change. Private files, private tools, hidden memories, messages, internal metadata, parent data and provider/payment configuration are excluded from public listings. Foundational context contains only compact factual resource wording; the 8000-token default budget and mandatory-observation priority remain unchanged. Capability identifiers are listed once alongside their structured action descriptions, without duplicated schemas in self state.
+`INSPECT_SELF` exposes safe self state, resource totals/reserved/available, storage usage/quota, capital by currency and lineage, plus all of the caller's current pending purchase requests. Each private request summary contains `id`, `resource`, `amount`, `status`, `createdTick` and `reason`, without funding/payment configuration. Cognition includes the total pending count and an oldest-first projection of at most five requests within 600 estimated tokens, after new observations and before optional recent history, subject to the unchanged complete-input budget. A bounded-context note points to `INSPECT_SELF` when entries are omitted. Terminal requests remain in durable history and Owner `resources requests --all` inspection, rather than a permanent prompt catalog. Public inhabitant listings do not include another inhabitant's private requests. `LIST_INHABITANTS` exposes active identity/name/generation/lifecycle, cognition dormancy, resource totals/reserved/available and capital by currency. These public economic facts are a deliberate visibility change. Private files, private tools, hidden memories, messages, internal metadata, parent data and provider/payment configuration are excluded from public listings. Foundational context contains only compact factual resource wording; the 8000-token default budget and mandatory-observation priority remain unchanged. Capability identifiers are listed once alongside their structured action descriptions, without duplicated schemas in self state.
 
 ## Owner operations
 

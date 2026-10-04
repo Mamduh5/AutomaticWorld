@@ -22,6 +22,7 @@ export const AgentActionSchema=z.discriminatedUnion('type',[
   z.object({type:z.literal('TRANSFER_RESOURCE'),resource:z.enum(['COGNITION_CREDIT','LOCAL_COMPUTE']),amount:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),to:z.string().min(1).max(100)}),
   z.object({type:z.literal('TRANSFER_CAPITAL'),currency:z.string().regex(/^[A-Z]{3}$/),amount:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),to:z.string().min(1).max(100)}),
   z.object({type:z.literal('REQUEST_RESOURCE_PURCHASE'),resource:z.enum(['COGNITION_CREDIT','LOCAL_COMPUTE']),amount:z.number().int().positive().max(Number.MAX_SAFE_INTEGER),fundingAccount:z.string().max(100).optional(),currency:z.string().regex(/^[A-Z]{3}$/).optional(),maxSpend:z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),reason:z.string().max(500)}),
+  z.object({type:z.literal('CANCEL_RESOURCE_PURCHASE_REQUEST'),requestId:z.string().uuid()}),
   z.object({type:z.literal('INSPECT_WORLD')}),z.object({type:z.literal('LIST_INHABITANTS')}),z.object({type:z.literal('INSPECT_SELF')}),
 ]);
 export type AgentAction=z.infer<typeof AgentActionSchema>;

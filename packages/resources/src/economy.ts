@@ -13,9 +13,13 @@ export interface Movement {
 }
 export interface PurchaseRequest {
   id:string; agent_id:string; resource:string; amount:number; funding_account:string;
-  currency:string|null; max_spend:number|null; reason:string; status:'PENDING'|'APPROVED'|'DENIED'|'SETTLED';
+  currency:string|null; max_spend:number|null; reason:string; status:'PENDING'|'APPROVED'|'DENIED'|'SETTLED'|'CANCELLED';
   created_tick:number; created_at:string; settlement_id:string|null;
 }
+export interface PurchaseRequestSummary {
+  id:string;resource:string;amount:number;status:PurchaseRequest['status'];createdTick:number;reason:string;
+}
+const summarizeRequest=(r:PurchaseRequest):PurchaseRequestSummary=>({id:r.id,resource:r.resource,amount:r.amount,status:r.status,createdTick:r.created_tick,reason:r.reason});
 export function integer(value:number, positive=false):number {
   if(!Number.isSafeInteger(value)||value<(positive?1:0))throw new Error(`Amount must be a ${positive?'positive':'non-negative'} safe integer`);
   return value;
@@ -175,6 +179,25 @@ export class EconomyService {
   }
   requests():PurchaseRequest[] {this.requireModel();return this.db.prepare('SELECT * FROM resource_purchase_requests ORDER BY created_at').all() as PurchaseRequest[];}
   getRequest(id:string):PurchaseRequest {this.requireModel();const r=this.db.prepare('SELECT * FROM resource_purchase_requests WHERE id=?').get(id) as PurchaseRequest|undefined;if(!r)throw new Error('Resource request not found');return r;}
+  /** Private requester facts; deliberately separate from self(), which also feeds public presence. */
+  pendingRequests(agentId:string,limit?:number):PurchaseRequestSummary[] {
+    this.requireModel();if(limit!==undefined)integer(limit,true);
+    return (this.db.prepare("SELECT * FROM resource_purchase_requests WHERE agent_id=? AND status='PENDING' ORDER BY created_tick,created_at,id LIMIT ?").all(agentId,limit??-1) as PurchaseRequest[]).map(summarizeRequest);
+  }
+  pendingRequestCount(agentId:string):number {
+    this.requireModel();return (this.db.prepare("SELECT count(*) n FROM resource_purchase_requests WHERE agent_id=? AND status='PENDING'").get(agentId) as {n:number}).n;
+  }
+  cancelRequest(agentId:string,id:string,tick:number):PurchaseRequestSummary {
+    this.requireModel();return this.atomic(()=>{
+      // Query by actor as well as ID: a foreign request and a missing request have the same error.
+      const agent=this.repo.getAgent(agentId),r=this.db.prepare('SELECT * FROM resource_purchase_requests WHERE id=? AND agent_id=?').get(id,agentId) as PurchaseRequest|undefined;
+      if(!agent||agent.id!==agentId||!r)throw new Error('Resource purchase request not found or not authorized');
+      if(r.status!=='PENDING')throw new Error('Only PENDING resource purchase requests can be cancelled');
+      this.db.prepare("UPDATE resource_purchase_requests SET status='CANCELLED' WHERE id=? AND agent_id=? AND status='PENDING'").run(id,agentId);
+      this.repo.addEvent('RESOURCE_PURCHASE_REQUEST_CANCELLED',tick,agentId,null,{requestId:id,agentId,resource:r.resource,amount:r.amount,createdTick:r.created_tick,withdrawnTick:tick});
+      return {...summarizeRequest(r),status:'CANCELLED'};
+    });
+  }
   decideRequest(id:string,approve:boolean):PurchaseRequest {
     this.requireModel();return this.atomic(()=>{const r=this.getRequest(id),status=approve?'APPROVED':'DENIED';if(r.status===status)return r;if(r.status!=='PENDING'&&!(r.status==='APPROVED'&&!approve))throw new Error('Request cannot be decided in its current state');
       if(approve&&r.currency)this.reserve(`purchase:${id}`,'CAPITAL',r.currency,r.funding_account,r.max_spend!,'PURCHASE');if(!approve&&r.status==='APPROVED'&&r.currency)this.resolveReservation(`purchase:${id}`);
@@ -235,11 +258,19 @@ export class EconomyService {
     for(const entry of this.db.prepare('SELECT kind,unit,from_account,to_account FROM value_ledger').all() as {kind:ValueKind;unit:string;from_account:string|null;to_account:string|null}[])for(const account of [entry.from_account,entry.to_account])if(account&&!accounts.some(a=>a.kind===entry.kind&&a.unit===entry.unit&&a.account===account))failures.push(`Missing ledger account ${account}/${entry.unit}`);
     for(const op of this.db.prepare('SELECT id,agent_id,status FROM cognition_opportunities').all() as {id:string;agent_id:string;status:string}[]){const r=this.reservation(op.id),expected=op.status==='PENDING'?'RESERVED':op.status==='SUCCESS'?'CONSUMED':'RELEASED';if(!r||r.status!==expected||r.amount!==1||r.purpose!=='COGNITION'||r.account!==`AGENT:${op.agent_id}`)failures.push(`Cognition opportunity reservation mismatch ${op.id}`);}
     for(const request of this.requests()){
-      try{integer(request.amount,true);this.validateUnit('RESOURCE',request.resource);this.validateAccount('CAPITAL',request.funding_account);if(request.funding_account!==`AGENT:${request.agent_id}`||!['PENDING','APPROVED','DENIED','SETTLED'].includes(request.status))throw new Error('Invalid purchase ownership/status');if(request.currency){currencyCode(request.currency);integer(request.max_spend!);}else if(request.max_spend!==null)throw new Error('Currency/spend mismatch');}catch{failures.push(`Invalid purchase request ${request.id}`);}
+      try{integer(request.amount,true);this.validateUnit('RESOURCE',request.resource);this.validateAccount('CAPITAL',request.funding_account);if(request.funding_account!==`AGENT:${request.agent_id}`||!['PENDING','APPROVED','DENIED','SETTLED','CANCELLED'].includes(request.status))throw new Error('Invalid purchase ownership/status');if(request.currency){currencyCode(request.currency);integer(request.max_spend!);}else if(request.max_spend!==null)throw new Error('Currency/spend mismatch');}catch{failures.push(`Invalid purchase request ${request.id}`);}
+      const creation=this.db.prepare("SELECT actor_id FROM events WHERE type='RESOURCE_PURCHASE_REQUESTED' AND json_extract(payload,'$.requestId')=? ORDER BY id LIMIT 1").get(request.id) as {actor_id:string}|undefined;
+      if(creation&&creation.actor_id!==request.agent_id)failures.push(`Purchase request ownership changed ${request.id}`);
       const r=this.reservation(`purchase:${request.id}`);
       if(request.status==='APPROVED'&&request.currency&&(!r||r.status!=='RESERVED'||r.amount!==request.max_spend||r.account!==request.funding_account||r.unit!==request.currency))failures.push(`Purchase reservation mismatch ${request.id}`);
       if((request.status==='DENIED'||request.status==='SETTLED')&&r&&r.status==='RESERVED')failures.push(`Resolved purchase has an outstanding hold ${request.id}`);
       if(request.status==='SETTLED'){const entry=this.db.prepare('SELECT amount,unit,to_account,artifact FROM value_ledger WHERE id=?').get(request.settlement_id) as {amount:number;unit:string;to_account:string;artifact:string}|undefined;if(!entry||entry.amount<1||entry.amount>request.amount||entry.unit!==request.resource||entry.to_account!==`AGENT:${request.agent_id}`||entry.artifact!==request.id)failures.push(`Purchase settlement mismatch ${request.id}`);}
+      const cancellations=this.db.prepare("SELECT actor_id,tick,payload FROM events WHERE type='RESOURCE_PURCHASE_REQUEST_CANCELLED' AND json_extract(payload,'$.requestId')=? ORDER BY id").all(request.id) as {actor_id:string;tick:number;payload:string}[];
+      if(request.status==='CANCELLED'||cancellations.length){
+        const event=cancellations[0],facts=event?JSON.parse(event.payload) as Record<string,unknown>:{};
+        if(request.status!=='CANCELLED'||cancellations.length!==1||event?.actor_id!==request.agent_id||facts.agentId!==request.agent_id||facts.resource!==request.resource||facts.amount!==request.amount||facts.createdTick!==request.created_tick||facts.withdrawnTick!==event?.tick)failures.push(`Purchase cancellation lifecycle mismatch ${request.id}`);
+        if(request.settlement_id!==null||r||this.db.prepare("SELECT 1 FROM value_ledger WHERE category='PURCHASE_SETTLEMENT' AND artifact=?").get(request.id))failures.push(`Cancelled purchase has economic effects ${request.id}`);
+      }
     }
     for(const outcome of this.db.prepare('SELECT id FROM execution_outcomes').all() as {id:string}[]){const r=this.reservation(outcome.id);if(!r||r.kind!=='RESOURCE'||r.unit!=='LOCAL_COMPUTE'||r.purpose!=='EXECUTION'||r.status!=='CONSUMED')failures.push(`Execution outcome reservation mismatch ${outcome.id}`);}
     if(this.db.prepare('SELECT idempotency_key FROM value_ledger GROUP BY idempotency_key HAVING count(*)>1').get())failures.push('Duplicate ledger idempotency key');
